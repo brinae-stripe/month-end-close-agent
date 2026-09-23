@@ -92,7 +92,7 @@ function recommendResidentActions(r, s) {
 
   if (c.disputed) {
     actions.push({
-      label: "Escalate dispute via Stripe MCP",
+      label: "Escalate dispute",
       result: `Simulated: pulled the disputed charge and its evidence for lease ${r.lease_id} via the Stripe MCP server and opened a review task for a human to submit a response.`,
     });
   }
@@ -103,11 +103,11 @@ function recommendResidentActions(r, s) {
     actions.push(
       r.payment_method_type === "ach"
         ? {
-            label: "Retry ACH debit via Stripe MCP",
+            label: "Retry ACH debit",
             result: `Simulated: re-presented the returned ACH debit for lease ${r.lease_id} through the Stripe MCP server and queued a notice to the resident that the payment is being retried.`,
           }
         : {
-            label: "Retry card charge via Stripe MCP",
+            label: "Retry card charge",
             result: `Simulated: retried the declined card charge for lease ${r.lease_id} through the Stripe MCP server and queued a notice to the resident.`,
           }
     );
@@ -117,11 +117,11 @@ function recommendResidentActions(r, s) {
     actions.push(
       c.isCurrent
         ? {
-            label: "Apply credit to next invoice via Stripe MCP",
+            label: "Apply credit to next invoice",
             result: `Simulated: applied the ${Fmt.money(r.overpayment_cents)} credit on lease ${r.lease_id} to next month's rent invoice via the Stripe MCP server, so it stops sitting unapplied on the resident's balance.`,
           }
         : {
-            label: "Refund credit with deposit via Stripe MCP",
+            label: "Refund credit with deposit",
             result: `Simulated: added the ${Fmt.money(r.overpayment_cents)} unapplied credit on lease ${r.lease_id} to the move-out deposit refund via the Stripe MCP server, rather than leaving it stranded after the lease ended.`,
           }
     );
@@ -131,12 +131,12 @@ function recommendResidentActions(r, s) {
   // than another one-off reminder. A single late month just gets a nudge.
   if (c.chronicLate && !c.inArrears) {
     actions.push({
-      label: "Offer autopay enrollment via Stripe MCP",
+      label: "Offer autopay enrollment",
       result: `Simulated: sent an autopay enrollment link for lease ${r.lease_id} via the Stripe MCP server, targeting the recurring lateness rather than chasing each month individually.`,
     });
   } else if (c.lateCount > 0 && !c.inArrears) {
     actions.push({
-      label: "Send payment reminder via Stripe MCP",
+      label: "Send payment reminder",
       result: `Simulated: sent a rent-due reminder ahead of next month's invoice for lease ${r.lease_id} via the Stripe MCP server.`,
     });
   }
@@ -144,7 +144,7 @@ function recommendResidentActions(r, s) {
   // Only worth proposing for a resident who is still in place.
   if (c.absorbedFee && c.isCurrent) {
     actions.push({
-      label: "Offer ACH enrollment via Stripe MCP",
+      label: "Offer ACH enrollment",
       result: `Simulated: sent an ACH enrollment link for lease ${r.lease_id} via the Stripe MCP server, moving ${Fmt.money(r.monthly_rent_cents)}/mo off the absorbed card fee.`,
     });
   }

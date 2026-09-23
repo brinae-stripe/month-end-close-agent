@@ -17,36 +17,36 @@ function exceptionMcpAction(exc) {
     case "payout_failed":
       return exc.unrecoverable_by_deadline
         ? {
-            label: "Escalate to Treasury",
-            result: `Simulated: pulled the returned payout and its failure reason for ${exc.entity_name} via the Stripe MCP server and opened a Treasury funding request. Reinitiating would not clear by the 10th, so this deliberately skips the retry path.`,
+            label: "Escalate for manual funding",
+            result: `Simulated: read the returned payout and its failure reason for ${exc.entity_name} out of Stripe and drafted a funding request for the operator's own treasury team. Reinitiating would not clear by the 10th, so this deliberately skips the retry path. Note that the Stripe call here is only the read &mdash; funding an investor off the payout path is a human decision.`,
           }
         : {
-            label: "Reinitiate payout via MCP",
+            label: "Reinitiate payout",
             result: `Simulated: re-created the returned payout for ${exc.entity_name} against verified bank details via the Stripe MCP server.`,
           };
     case "nsf_after_payout":
       return {
-        label: "Retry debit + net via MCP",
+        label: "Retry debit + net",
         result: `Simulated: re-presented the returned ACH debit via the Stripe MCP server and scheduled the unrecovered ${amount} to net against ${exc.entity_name}'s next payout, rather than a manual journal entry.`,
       };
     case "stale_mapping":
       return {
-        label: "Fix mapping via MCP",
+        label: "Fix mapping",
         result: `Simulated: repointed the property to ${exc.entity_name}'s connected account via the Stripe MCP server and transferred the misrouted ${amount} across from ${exc.counterparty_entity_name}. This also stops the exception recurring next month.`,
       };
     case "app_fee_misroute":
       return {
-        label: "Reverse app fee via MCP",
+        label: "Reverse app fee",
         result: `Simulated: reversed the misrouted application fee via the Stripe MCP server, returning ${amount} to ${exc.entity_name}.`,
       };
     case "short_payment":
       return {
-        label: "Invoice shortfall via MCP",
+        label: "Invoice shortfall",
         result: `Simulated: created a ${amount} balance-due invoice on the short-paid lease via the Stripe MCP server. ${exc.entity_name}'s statement is left unadjusted per the standard disposition.`,
       };
     case "duplicate_payment":
       return {
-        label: "Refund duplicate via MCP",
+        label: "Refund duplicate",
         result: `Simulated: refunded the duplicate ${amount} charge via the Stripe MCP server, leaving the original payment to ${exc.entity_name} untouched.`,
       };
     default:
@@ -100,6 +100,9 @@ function renderClose() {
     </div>
 
     <div class="section-title">Exception queue</div>
+    <div class="callout" style="margin-top:0; margin-bottom:16px;">
+      Each exception carries the specific fix for its type. Those are <strong>simulated</strong> Stripe calls &mdash; the kind the <strong>MCP server</strong> makes reachable to an agent &mdash; and they stay separate from Approve on purpose: carrying out the mechanical fix and signing off on the reconciliation are two different decisions.
+    </div>
     <div class="exception-queue" id="exception-queue">
       ${openExceptions.length ? openExceptions.map(exceptionCardHtml).join("") : `<div class="empty-queue">All exceptions cleared.</div>`}
     </div>

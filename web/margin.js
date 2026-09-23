@@ -18,7 +18,7 @@ function buildMarginRecommendations(ctx) {
       title: "Migrate card-paying residents to ACH",
       why: `${Fmt.int(mig.cardCharges)} rent payments a month arrive on card, averaging ${Fmt.money(mig.avgChargeCents)}. At the negotiated card rate that is ${Fmt.money(mig.cardFeePerChargeCents)} of fee per payment; the same payment on ACH costs ${Fmt.money(mig.achFeePerChargeCents)}, because the ACH cap binds far below rent-sized amounts. Rent is the rare category where ACH economics are overwhelming, which makes this the largest controllable line on the platform &mdash; but the ACH rate here is the unverified placeholder flagged in the assumptions panel, so treat the size as directional.`,
       action: {
-        label: "Send ACH enrollment links via Stripe MCP",
+        label: "Send ACH enrollment links",
         result: `Simulated: generated ACH enrollment links for the ${Fmt.int(mig.cardCharges)} card-paying leases via the Stripe MCP server and queued them behind the operator's existing resident-communication approval step.`,
       },
     });
@@ -33,7 +33,7 @@ function buildMarginRecommendations(ctx) {
       title: "Require a prior failed payment before a fee waiver",
       why: `${pct.toFixed(0)}% of this period's waivers went to residents who had never had a payment fail, so the waiver was doing convenience work rather than the recovery work it was designed for. That share, not the headline total, is the genuinely addressable part &mdash; the rest is arguably buying back a relationship.`,
       action: {
-        label: "Draft eligibility rule via Stripe MCP",
+        label: "Draft eligibility rule",
         result: `Simulated: pulled the ${Fmt.int(wcp.no_prior_failure_count)} no-prior-failure waivers via the Stripe MCP server and drafted an eligibility rule gating waivers on a prior failed payment, routed to the fee-policy owner for approval.`,
       },
     });
@@ -46,7 +46,7 @@ function buildMarginRecommendations(ctx) {
       title: `Review fee pass-through with ${top.name}`,
       why: `This single entity accounts for ${Fmt.money(top.cents)} of absorbed fees this period, the most of any in the portfolio. Concentration that high usually means one entity's residents pay by card far more than the portfolio average, which is an entity-level conversation rather than a platform-wide policy change.`,
       action: {
-        label: "Pull entity fee breakdown via Stripe MCP",
+        label: "Pull entity fee breakdown",
         result: `Simulated: assembled a per-charge fee breakdown for ${top.name} via the Stripe MCP server and drafted a pass-through proposal for the entity's next statement review.`,
       },
     });
@@ -59,8 +59,8 @@ function buildMarginRecommendations(ctx) {
     title: "Instrument absorbed cost so it stops being an estimate",
     why: `The ceiling above is a bound, not a measurement: today's true absorbed cost sits somewhere between zero and it, and nothing currently records where. A recurring warehouse query on fee detail, joined to the waiver ledger, converts this page from an estimate into a tracked figure &mdash; which is also what makes the three items above measurable after the fact.`,
     action: {
-      label: "Schedule a recurring fee query via Stripe MCP",
-      result: `Simulated: scheduled a recurring query over balance transaction fee detail via the Stripe MCP server, writing absorbed-fee totals per entity per month into the warehouse so this page reads a measured number instead of a modeled one.`,
+      label: "Schedule a recurring fee query",
+      result: `Simulated: scheduled a recurring query over the balance-transaction fee detail that Data Pipeline already lands in the warehouse, writing absorbed-fee totals per entity per month so this page reads a measured number instead of a modeled one. This one is a Data Pipeline job rather than an MCP call &mdash; the agent is scheduling a query, not touching the Stripe account.`,
     },
   });
 
@@ -141,7 +141,7 @@ function renderMargin() {
         `).join("")}
       </div>
       <div class="briefing-disclosure">
-        Each figure above is computed from this period's charge, fee, and waiver data &mdash; the kind of query the Stripe Data Pipeline puts in a warehouse. The buttons are what an agent with the Stripe MCP server would then execute against the account. Nothing here calls Stripe: the actions are simulated so the shape of the loop is visible without side effects.
+        Each figure above is computed from this period's charge, fee, and waiver data &mdash; the kind of query <strong>Data Pipeline</strong> puts in a warehouse. The first three buttons are then work against the Stripe account, which is what the <strong>MCP server</strong> makes reachable; the fourth is a warehouse job rather than a Stripe call, and says so. Nothing here actually calls Stripe: the actions are simulated so the shape of the loop is visible without side effects.
       </div>
     </div>
 

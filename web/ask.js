@@ -51,8 +51,8 @@ function buildRecommendations() {
       title: `Escalate ${unrecoverable.length} entit${unrecoverable.length === 1 ? "y" : "ies"} that can no longer clear by the 10th`,
       why: `${unrecoverable.map((e) => e.name).join(", ")} ${unrecoverable.length === 1 ? "is" : "are"} past the point where reinitiating a payout still lands by ${Fmt.date(d.meta.target_day)}. Fixing the bank details today does not recover the deadline, so this needs a funding decision outside the normal payout path rather than another retry.`,
       action: {
-        label: "Escalate to Treasury via Stripe MCP",
-        result: `Simulated: pulled each blocked payout and its failure reason via the Stripe MCP server, then opened a Treasury funding request for ${unrecoverable.map((e) => e.name).join(", ")} flagged unrecoverable by deadline.`,
+        label: "Escalate for manual funding",
+        result: `Simulated: read each blocked payout and its failure reason out of Stripe, then drafted a funding request for the operator's own treasury team covering ${unrecoverable.map((e) => e.name).join(", ")}. Only the first half of that is a Stripe call &mdash; funding an investor outside the payout path is the operator's decision to make, not an action an agent should take on its own.`,
       },
     });
   }
@@ -65,7 +65,7 @@ function buildRecommendations() {
       title: `Reinitiate ${recoverable.length} returned payout${recoverable.length === 1 ? "" : "s"} before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff`,
       why: `${recoverable.map((e) => e.name).join(", ")} can still fund by the 10th, but only if the payout is reinitiated within ${d.meta.days_until_initiate_cutoff} day${d.meta.days_until_initiate_cutoff === 1 ? "" : "s"} to clear T+2. This is the one item on this list where waiting changes the outcome.`,
       action: {
-        label: "Reinitiate payouts via Stripe MCP",
+        label: "Reinitiate payouts",
         result: `Simulated: re-created the returned payouts for ${recoverable.map((e) => e.name).join(", ")} against verified bank details via the Stripe MCP server. New settlement lands before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff.`,
       },
     });
@@ -79,7 +79,7 @@ function buildRecommendations() {
       title: `Resolve ${Fmt.money(sumImpact(nsf))} of over-funding from ${nsf.length} NSF return${nsf.length === 1 ? "" : "s"} after payout`,
       why: `These residents' rent payments were returned after the entity had already been paid out, so ${nsf.length === 1 ? "that entity is" : "those entities are"} holding money the portfolio never collected. Left alone it silently distorts next month's opening balance.`,
       action: {
-        label: "Retry debits and net the shortfall via Stripe MCP",
+        label: "Retry debits and net the shortfall",
         result: `Simulated: re-presented each returned ACH debit via the Stripe MCP server and scheduled the unrecovered balance to net against ${nsf.map((e) => e.entity_name).join(", ")}'s next payout instead of a manual journal entry.`,
       },
     });
@@ -93,7 +93,7 @@ function buildRecommendations() {
       title: `Correct ${stale.length} stale connected-account mapping${stale.length === 1 ? "" : "s"}`,
       why: `${Fmt.money(sumImpact(stale))} of rent routed to the prior owner's connected account after ${stale.length === 1 ? "a property" : "properties"} changed entities. Until the mapping is fixed this recurs every month, so correcting it prevents next month's exception rather than just clearing this one.`,
       action: {
-        label: "Update account mapping via Stripe MCP",
+        label: "Update account mapping",
         result: `Simulated: repointed the affected properties to the correct connected accounts via the Stripe MCP server and transferred the misrouted ${Fmt.money(sumImpact(stale))} to the receiving ${stale.length === 1 ? "entity" : "entities"}.`,
       },
     });
@@ -107,7 +107,7 @@ function buildRecommendations() {
       title: `Refund ${dup.length} duplicate rent payment${dup.length === 1 ? "" : "s"}`,
       why: `${Fmt.money(sumImpact(dup))} was charged twice on the same lease. Every day this sits is a day a resident is out of pocket for rent they already paid, which is the fastest of these items to become a support escalation.`,
       action: {
-        label: "Refund duplicates via Stripe MCP",
+        label: "Refund duplicates",
         result: `Simulated: issued refunds for the duplicate charges via the Stripe MCP server, leaving the original payments and the entities' statements untouched.`,
       },
     });
@@ -121,7 +121,7 @@ function buildRecommendations() {
       title: `Collect ${Fmt.money(sumImpact(short))} in short-paid rent across ${short.length} lease${short.length === 1 ? "" : "s"}`,
       why: `${short.length === 1 ? "A resident" : "These residents"} paid less than the lease amount, so the entity's rent roll and its settlement disagree. The convention here is to pursue the resident rather than restate the entity's statement.`,
       action: {
-        label: "Invoice the shortfall via Stripe MCP",
+        label: "Invoice the shortfall",
         result: `Simulated: created a balance-due invoice for each short-paid lease via the Stripe MCP server and left the affected entities' statements unadjusted per the standard disposition.`,
       },
     });
@@ -135,7 +135,7 @@ function buildRecommendations() {
       title: `Reverse ${Fmt.money(sumImpact(appfee))} of misrouted application fees`,
       why: `The platform fee was taken on ${appfee.length === 1 ? "a charge" : "charges"} where it should not have been, so the platform is holding revenue that belongs to the ${appfee.length === 1 ? "entity" : "entities"}.`,
       action: {
-        label: "Reverse application fees via Stripe MCP",
+        label: "Reverse application fees",
         result: `Simulated: reversed the misrouted application fees via the Stripe MCP server, returning ${Fmt.money(sumImpact(appfee))} to the affected ${appfee.length === 1 ? "entity" : "entities"}.`,
       },
     });
@@ -150,7 +150,7 @@ function buildRecommendations() {
       title: `Move card-paying residents to ACH to stop absorbing ~${Fmt.moneyShort(mig.monthlySavingsCents)}/mo`,
       why: `${Fmt.int(mig.cardCharges)} rent payments a month arrive on card at an average of ${Fmt.money(mig.avgChargeCents)}, costing ${Fmt.money(mig.cardFeePerChargeCents)} each in fees the operator absorbs. The same payment on ACH costs ${Fmt.money(mig.achFeePerChargeCents)} because the ${Fmt.money(d.meta.fee_assumptions.ach_cap_cents)} cap binds well below rent-sized amounts. This is the single largest controllable cost on the platform, and it rests on the unverified ACH rate flagged in the assumptions panel.`,
       action: {
-        label: "Send ACH enrollment links via Stripe MCP",
+        label: "Send ACH enrollment links",
         result: `Simulated: generated ACH enrollment links for the ${Fmt.int(mig.cardCharges)} card-paying leases via the Stripe MCP server and queued them behind the operator's existing resident communication approval step.`,
       },
     });
@@ -165,7 +165,7 @@ function buildRecommendations() {
       title: `Tighten waiver eligibility &mdash; ${pct.toFixed(0)}% of waivers went to residents with no prior failure`,
       why: `${Fmt.int(wcp.no_prior_failure_count)} of ${Fmt.int(wcp.count)} fee waivers this period went to residents who had never had a payment fail, so the waiver was used as a convenience rather than to recover a relationship. That pattern, not the headline total, is the part that is actually addressable by policy.`,
       action: {
-        label: "Draft a waiver-eligibility rule via Stripe MCP",
+        label: "Draft a waiver-eligibility rule",
         result: `Simulated: pulled the ${Fmt.int(wcp.no_prior_failure_count)} no-prior-failure waivers via the Stripe MCP server and drafted an eligibility rule requiring a prior failed payment, routed to the fee-policy owner for approval.`,
       },
     });
@@ -182,7 +182,7 @@ function buildRecommendations() {
       title: `Chase ${arrears.length} leases in arrears right now (${Fmt.money(owed)} of rent)`,
       why: `These are leases whose most recent rent payment failed and has not been cured, sampled across the portfolio. Unlike the exception queue, nothing here is a reconciliation error &mdash; it is simply rent that has not arrived and is not being chased by anything automatic.`,
       action: {
-        label: "Batch retry debits via Stripe MCP",
+        label: "Batch retry debits",
         result: `Simulated: re-presented the failed debit on all ${arrears.length} leases in arrears via the Stripe MCP server and queued a notice to each resident that a retry is scheduled.`,
       },
     });
@@ -260,7 +260,7 @@ function renderBriefing(messages) {
     ${hidden > 0 ? `<div class="briefing-more">${hidden} lower-priority recommendation${hidden === 1 ? "" : "s"} not shown here; the full exception queue is on the Close tab.</div>` : ""}
 
     <div class="briefing-disclosure">
-      This briefing is <strong>computed</strong>, not generated. The ranking is a fixed rule &mdash; anything that becomes unfixable at the T+2 settlement cutoff outranks anything merely expensive, with dollar impact breaking ties &mdash; applied to the same JSON every other tab reads. There is no language model here and no network call. It stands in for the pattern the demo is about: Stripe data landing in the warehouse via <strong>Data Pipeline</strong>, and Stripe reachable as a tool via the <strong>MCP server</strong>, so an agent can arrive already knowing what is wrong and hand back a specific action instead of a chart. Every action below is <strong>simulated</strong>.
+      This briefing is <strong>computed</strong>, not generated. The ranking is a fixed rule &mdash; anything that becomes unfixable at the T+2 settlement cutoff outranks anything merely expensive, with dollar impact breaking ties &mdash; applied to the same JSON every other tab reads. There is no language model here and no network call. It stands in for the pattern the demo is about: Stripe data landing in the warehouse via <strong>Data Pipeline</strong>, and Stripe reachable as a tool via the <strong>MCP server</strong>, so an agent can arrive already knowing what is wrong and hand back a specific action instead of a chart. Not every button above is a Stripe call, and the ones that aren't say so in their result: refunding a duplicate or repointing a connected account is an MCP call, while drafting a fee policy, scheduling a warehouse query, or asking a human to fund an investor off the payout path is not. Every action below is <strong>simulated</strong>.
     </div>
   `;
 
@@ -478,7 +478,7 @@ function answerCedarRow() {
   `;
   const actions = excs.length
     ? [
-        { label: "Send resident a payment reminder via Stripe MCP", result: `Simulated: queued a payment reminder to the resident on the delinquent lease at ${entity.name} via the Stripe MCP server.` },
+        { label: "Send resident a payment reminder", result: `Simulated: queued a payment reminder to the resident on the delinquent lease at ${entity.name} via the Stripe MCP server.` },
         { label: "Move resident's account to collections", result: `Simulated: flagged the resident account for collections handoff at ${entity.name}. Status change logged for property ops; ${entity.name}'s statement is left unadjusted per the standard disposition.` },
       ]
     : [];
@@ -505,7 +505,7 @@ function answerWaivedFees() {
   const noPriorPct = (wcp.no_prior_failure_count / wcp.count) * 100;
   const actions = [
     {
-      label: "Flag no-prior-failure waivers via Stripe MCP",
+      label: "Flag no-prior-failure waivers",
       result: `Simulated: pulled ${Fmt.int(wcp.no_prior_failure_count)} waivers (${noPriorPct.toFixed(0)}% of this period's total) applied to residents with no prior payment failure via the Stripe MCP server, and sent them to the fee-policy owner for review as likely shortcut usage rather than recovery.`,
     },
   ];
@@ -528,8 +528,8 @@ function answerNsfReturns() {
   const sources = nsfExcs.flatMap((e) => e.citations);
   const actions = nsfExcs.length
     ? [
-        { label: "Retry ACH debits via Stripe MCP", result: `Simulated: re-presented the returned ACH debits for the residents behind ${nsfExcs.map((e) => e.entity_name).join(", ")}'s payments via the Stripe MCP server.` },
-        { label: "Send NSF notices via Stripe MCP", result: `Simulated: queued an NSF notice to the residents on ${nsfExcs.map((e) => e.entity_name).join(", ")} via the Stripe MCP server, explaining the returned payment and the next debit attempt.` },
+        { label: "Retry ACH debits", result: `Simulated: re-presented the returned ACH debits for the residents behind ${nsfExcs.map((e) => e.entity_name).join(", ")}'s payments via the Stripe MCP server.` },
+        { label: "Send NSF notices", result: `Simulated: queued an NSF notice to the residents on ${nsfExcs.map((e) => e.entity_name).join(", ")} via the Stripe MCP server, explaining the returned payment and the next debit attempt.` },
       ]
     : [];
   return { lede, tableHtml, sources, actions };
@@ -578,7 +578,7 @@ function answerEntityMoves() {
   const sources = staleExcs.flatMap((e) => e.citations);
   const actions = staleExcs.length
     ? [
-        { label: "Update connected-account mapping via Stripe MCP", result: `Simulated: corrected the connected-account mapping for ${staleExcs.length} propert${staleExcs.length === 1 ? "y" : "ies"} via the Stripe MCP server &mdash; future charges route directly to ${staleExcs.length === 1 ? "the correct entity" : "the correct entities"}.` },
+        { label: "Update connected-account mapping", result: `Simulated: corrected the connected-account mapping for ${staleExcs.length} propert${staleExcs.length === 1 ? "y" : "ies"} via the Stripe MCP server &mdash; future charges route directly to ${staleExcs.length === 1 ? "the correct entity" : "the correct entities"}.` },
         { label: "Notify entity ops of the mapping fix", result: `Simulated: notified entity ops that the stale mapping on ${staleExcs.map((e) => e.entity_name).join(", ")} has been corrected.` },
       ]
     : [];

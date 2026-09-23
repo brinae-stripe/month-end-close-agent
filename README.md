@@ -84,8 +84,19 @@ unmistakable.
   server**: SDP lands Stripe data in the warehouse so a query like
   "absorbed fees by entity this period" is answerable at all, and the MCP
   server makes Stripe reachable as a tool so the answer can be acted on in
-  the same step. **Every action in this demo is simulated** — clicking a
-  button injects a canned result and makes no network call of any kind.
+  the same step. Button labels deliberately say what the action *does*
+  ("Refund duplicate", "Fix mapping") rather than tagging every one of them
+  "via Stripe MCP" — the mechanism is named once per view in a disclosure,
+  and each result states which part of the work is actually a Stripe call.
+  That distinction is load-bearing: refunding a duplicate or repointing a
+  connected account is an MCP call, whereas drafting a fee policy,
+  scheduling a warehouse query, or asking a human to fund an investor off
+  the payout path is not, and the demo says so rather than implying MCP
+  does everything. Note also that the escalation path means the operator's
+  own treasury team, not **Stripe Treasury** — the button is worded to
+  avoid that collision. **Every action in this demo is simulated** —
+  clicking a button injects a canned result and makes no network call of
+  any kind.
 - Fee assumptions on the Margin view use this operator's **negotiated
   Connect pricing** (2.50% + $0.20 domestic card, 4.00% + $0.20
   international card, ~1% of card volume assumed international). ACH
