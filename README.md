@@ -24,10 +24,20 @@ unmistakable.
   "Rule-Based Risk Flags" panel is a deterministic point-scoring pass over
   that same payment history, run in the browser — like Ask, it is
   explicitly not a language model and makes no network call. Each flagged
-  lease shows the resident, not the property-owner entity, as the subject,
-  with a simulated recommended action (send reminder, retry debit, escalate
-  dispute) styled after a Stripe MCP-connected agent — illustrating what's
-  possible, not a real Stripe call.
+  lease shows the resident (first name only), not the property-owner entity,
+  as the subject. Only arrears, lateness, and disputes score; a credit
+  balance or an absorbed card fee is listed separately as an observation,
+  since those are operator-side cleanup and margin items rather than
+  evidence the resident is a collection risk. Recommended actions are
+  derived from the flags that actually fired and are mutually consistent by
+  construction — a resident in arrears can never also be holding a credit
+  balance (Stripe would draw the credit down against the open invoice
+  first), so the panel never suggests retrying a debit for money already on
+  hand; chronic lateness gets an autopay offer rather than another one-off
+  reminder; and leases that have ended are excluded from the queue entirely,
+  since you cannot enroll a former resident in autopay. Every action is
+  simulated, styled after a Stripe MCP-connected agent to show what SDP +
+  MCP makes possible — no real Stripe call is made.
 - Modeled on **81 connected accounts**: 64 active entities in scope for
   the current month's reconciliation (~$92M of rent volume across
   ~47,000 homes and ~44,000 charges) plus 17 dormant entities carried for

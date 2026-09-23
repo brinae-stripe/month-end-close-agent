@@ -849,7 +849,9 @@ margin_ceiling = {
 #                       'ACTIVE_UPGRADE', mrr_change)
 #   rent disputed    -> disputes (charge_id, amount, reason)
 #   overpayment      -> customers.balance (credit left after a duplicate or
-#                       over-remittance against a rent invoice)
+#                       over-remittance against a rent invoice; never set for
+#                       a resident currently in arrears, see below)
+#   in arrears       -> derived: most recent invoice's charge still failed
 
 NUM_RESIDENTS_SAMPLE = 480
 HISTORY_MONTHS = 6
@@ -923,13 +925,25 @@ for i in range(NUM_RESIDENTS_SAMPLE):
 
     disputed = rng.random() < 0.006
 
-    # A resident credit balance left over from a duplicate or over-remittance
-    # against a rent invoice (Stripe customer.balance) — same class of event
-    # already modeled at the entity level in Step 5 above, sampled here
-    # per-resident instead.
-    overpayment_cents = (
-        round(rng.uniform(2500, 22000)) if rng.random() < 0.05 else 0
-    )
+    # Arrears is a property of the *most recent* month, not of the window as
+    # a whole: a return five months ago that was later cured is history, a
+    # return last month is money still owed. The Residents view keys its
+    # recommended actions off this distinction.
+    in_arrears = history[-1]["status"] == "failed"
+
+    # A resident credit balance (customers.balance) comes from a duplicate
+    # remittance or from overshooting a catch-up payment. It cannot coexist
+    # with an unpaid invoice - Stripe draws an existing credit down against
+    # the open invoice before any new charge is attempted - so a resident
+    # currently in arrears never carries one. Overshooting is the likelier
+    # origin for someone who has missed a payment before, so a cured failure
+    # raises the rate rather than excluding it.
+    overpayment_cents = 0
+    if not in_arrears:
+        had_cured_failure = any(h["status"] == "failed" for h in history)
+        overpay_prob = 0.09 if had_cured_failure else 0.04
+        if rng.random() < overpay_prob:
+            overpayment_cents = round(rng.uniform(2500, 22000))
 
     output_residents.append({
         "resident_id": seq_id("res_sample", i + 1, width=4),
