@@ -848,9 +848,21 @@ margin_ceiling = {
 #   rent increase    -> subscription_item_change_events (event_type
 #                       'ACTIVE_UPGRADE', mrr_change)
 #   rent disputed    -> disputes (charge_id, amount, reason)
+#   overpayment      -> customers.balance (credit left after a duplicate or
+#                       over-remittance against a rent invoice)
 
 NUM_RESIDENTS_SAMPLE = 480
 HISTORY_MONTHS = 6
+
+# First names only, no surnames — enough to display a human label on the
+# Residents view without implying these map to any real person or resident.
+RESIDENT_FIRST_NAMES = [
+    "Maria", "James", "Aisha", "Devon", "Priya", "Marcus", "Elena", "Tyrell",
+    "Sofia", "Kenji", "Rosa", "Malik", "Grace", "Omar", "Nadia", "Chris",
+    "Yuki", "Leah", "Andre", "Fatima", "Wesley", "Ines", "Trevon", "Bianca",
+    "Sam", "Dana", "Reuben", "Camille", "Idris", "Lucia", "Amara", "Bex",
+    "Talia", "Micah", "Odalys", "Quinn", "Selin", "Nate", "Yara", "Jovan",
+]
 
 resident_entity_weights = [(e, e["home_count"]) for e in active_entities]
 _weight_total = sum(w for _, w in resident_entity_weights)
@@ -911,8 +923,17 @@ for i in range(NUM_RESIDENTS_SAMPLE):
 
     disputed = rng.random() < 0.006
 
+    # A resident credit balance left over from a duplicate or over-remittance
+    # against a rent invoice (Stripe customer.balance) — same class of event
+    # already modeled at the entity level in Step 5 above, sampled here
+    # per-resident instead.
+    overpayment_cents = (
+        round(rng.uniform(2500, 22000)) if rng.random() < 0.05 else 0
+    )
+
     output_residents.append({
         "resident_id": seq_id("res_sample", i + 1, width=4),
+        "resident_first_name": rng.choice(RESIDENT_FIRST_NAMES),
         "lease_id": seq_id("lease_sample", i + 1, width=4),
         "entity_id": entity["id"],
         "entity_name": entity["name"],
@@ -925,6 +946,7 @@ for i in range(NUM_RESIDENTS_SAMPLE):
         "security_deposit_cents": deposit_cents,
         "security_deposit_refunded_cents": deposit_refunded_cents,
         "disputed": disputed,
+        "overpayment_cents": overpayment_cents,
         "payment_history": history,
     })
 

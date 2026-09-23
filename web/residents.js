@@ -15,57 +15,97 @@
    the same way the Investor view's agent actions do. Clicking a button here
    only simulates that outcome; no real Stripe call is made. */
 
-function recommendResidentAction(r, s) {
+function recommendResidentActions(r, s) {
+  // One action per applicable flag, not just the top-scoring one — a
+  // resident can be both behind on payments and sitting on a credit
+  // balance, and those call for different MCP actions.
+  const actions = [];
+
   if (r.disputed) {
-    return {
+    actions.push({
       label: "Escalate dispute via Stripe MCP",
       result: `Simulated: opened a dispute-review task for lease ${r.lease_id} and pulled the underlying charge and evidence via the Stripe MCP server for a human to submit.`,
-    };
+    });
   }
+
   if (s.recentFailed > 0 && r.payment_method_type === "ach") {
-    return {
+    actions.push({
       label: "Retry ACH debit via Stripe MCP",
       result: `Simulated: queued a retry of the failed ACH debit for lease ${r.lease_id} through the Stripe MCP server and drafted a resident notification.`,
-    };
-  }
-  if (s.recentFailed > 0) {
-    return {
+    });
+  } else if (s.recentFailed > 0) {
+    actions.push({
       label: "Retry payment via Stripe MCP",
       result: `Simulated: queued a retry of the failed charge for lease ${r.lease_id} through the Stripe MCP server.`,
-    };
+    });
   }
-  return {
-    label: "Send payment reminder via Stripe MCP",
-    result: `Simulated: sent a rent-due reminder to the resident on lease ${r.lease_id} via the Stripe MCP server, referencing their late-payment history.`,
-  };
+
+  if (r.overpayment_cents > 0) {
+    actions.push({
+      label: "Apply credit balance via Stripe MCP",
+      result: `Simulated: applied the ${Fmt.money(r.overpayment_cents)} credit balance on lease ${r.lease_id} to next month's invoice via the Stripe MCP server, instead of leaving it sitting unapplied.`,
+    });
+  }
+
+  if (s.recentLate > 0 && s.recentFailed === 0) {
+    actions.push({
+      label: "Send payment reminder via Stripe MCP",
+      result: `Simulated: sent a rent-due reminder to the resident on lease ${r.lease_id} via the Stripe MCP server, referencing their late-payment history.`,
+    });
+  }
+
+  if (r.payment_method_type === "card" || r.payment_method_type === "wallet") {
+    actions.push({
+      label: "Offer ACH enrollment via Stripe MCP",
+      result: `Simulated: sent an ACH-enrollment incentive Payment Link for lease ${r.lease_id} via the Stripe MCP server, to move this resident off the absorbed card fee going forward.`,
+    });
+  }
+
+  if (!actions.length) {
+    actions.push({
+      label: "Send payment reminder via Stripe MCP",
+      result: `Simulated: sent a rent-due reminder to the resident on lease ${r.lease_id} via the Stripe MCP server.`,
+    });
+  }
+
+  return actions;
 }
 
 function scoreResident(r) {
   const recentLate = r.payment_history.filter((h) => h.status === "late").length;
   const recentFailed = r.payment_history.filter((h) => h.status === "failed").length;
+  const months = r.payment_history.length;
 
   let score = 0;
   const reasons = [];
 
-  if (recentLate > 0) {
-    score += 2 * recentLate;
-    reasons.push(`${recentLate} late rent payment${recentLate === 1 ? "" : "s"} in the trailing ${r.payment_history.length} months`);
-  }
   if (recentFailed > 0) {
     score += 4 * recentFailed;
-    reasons.push(`${recentFailed} failed/NSF rent payment${recentFailed === 1 ? "" : "s"}`);
+    reasons.push(`failed/NSF payment${recentFailed === 1 ? "" : "s"} (${recentFailed})`);
+  }
+  if (recentLate > 0) {
+    score += 2 * recentLate;
+    reasons.push(`${recentLate} late payment${recentLate === 1 ? "" : "s"} over last ${months} mos`);
   }
   if (r.disputed) {
     score += 3;
-    reasons.push("an open dispute on a rent charge");
+    reasons.push("open dispute");
   }
   if (r.payment_method_type === "ach" && recentFailed > 0) {
     score += 2;
-    reasons.push("ACH as the payment method, which correlates with return risk once a failure has occurred");
+    reasons.push("pays with ACH, which correlates with return risk once a failure has occurred");
+  }
+
+  // Informational only — these don't add to the risk score, but they shape
+  // which action gets recommended below.
+  const notes = [];
+  if (r.overpayment_cents > 0) notes.push("has overpaid");
+  if (r.payment_method_type === "card" || r.payment_method_type === "wallet") {
+    notes.push(`pays with ${r.payment_method_type === "card" ? "CC" : "digital wallet"} (fees absorbed)`);
   }
 
   const tier = score >= 8 ? "high" : score >= 4 ? "medium" : "low";
-  return { score, tier, reasons, recentLate, recentFailed };
+  return { score, tier, reasons, notes, recentLate, recentFailed };
 }
 
 function renderResidents() {
@@ -201,17 +241,18 @@ function renderResidents() {
     </div>
     <div class="risk-flag-list" id="risk-flag-list">
       ${flagged.length ? flagged.map(({ r, s }, i) => {
-        const action = recommendResidentAction(r, s);
+        const actions = recommendResidentActions(r, s);
+        const flagText = s.reasons.concat(s.notes).join(", ");
         return `
         <div class="risk-flag-card tier-${s.tier}">
           <div class="risk-flag-top">
             <span class="pill pill-${s.tier === "high" ? "critical" : s.tier === "medium" ? "medium" : "low"}">${s.tier} risk</span>
-            <span class="risk-flag-entity">Resident ${r.resident_id} &middot; lease under ${r.entity_name}, ${r.market}</span>
+            <span class="risk-flag-entity">Resident ${r.resident_first_name} &middot; lease under ${r.entity_name}, ${r.market}</span>
             <span class="risk-flag-rent">${Fmt.money(r.monthly_rent_cents)}/mo &middot; ${r.payment_method_type.toUpperCase()}</span>
           </div>
-          <div class="risk-flag-reasons">Flagged for: ${s.reasons.join("; ")}.</div>
+          <div class="risk-flag-reasons">${flagText}.</div>
           <div class="agent-actions">
-            <button class="agent-action-btn" data-risk-action="${i}">${action.label}</button>
+            ${actions.map((a, j) => `<button class="agent-action-btn" data-risk-index="${i}" data-action-index="${j}">${a.label}</button>`).join("")}
           </div>
         </div>
       `;
@@ -219,9 +260,9 @@ function renderResidents() {
     </div>
   `;
 
-  root.querySelectorAll("[data-risk-action]").forEach((btn) => {
-    const { r, s } = flagged[Number(btn.dataset.riskAction)];
-    const action = recommendResidentAction(r, s);
+  root.querySelectorAll("[data-risk-index]").forEach((btn) => {
+    const { r, s } = flagged[Number(btn.dataset.riskIndex)];
+    const action = recommendResidentActions(r, s)[Number(btn.dataset.actionIndex)];
     btn.addEventListener("click", () => {
       btn.disabled = true;
       btn.textContent = "Done";
