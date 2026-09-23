@@ -1,5 +1,14 @@
-/* Month-End Close Agent — Ask view. Scripted, not generative: answers are computed at
-   render time from the same JSON the other views use, so numbers always agree. */
+/* Month-End Close Agent — Ask view, and the landing surface for the whole app.
+   Scripted, not generative: answers are computed at render time from the same
+   JSON the other views use, so numbers always agree.
+
+   This view opens with a proactive briefing rather than an empty thread. The
+   point of the demo is that once Stripe data lands in the warehouse (Data
+   Pipeline) and Stripe is reachable as a tool (MCP server), the close stops
+   being a hunt through dashboards: the agent arrives already knowing what is
+   wrong and what it would do about it. The briefing is the "already knowing"
+   half; the action buttons are the "what it would do" half. Both are
+   deterministic and disclosed as such. */
 
 const ASK_QUESTIONS = [
   "Which investor entities are at risk of missing the 10th?",
@@ -11,11 +20,257 @@ const ASK_QUESTIONS = [
 ];
 
 const FALLBACK_ANSWER = {
-  lede: "I can answer questions about settlement, exceptions, and absorbed cost this period.",
+  lede: "I don't have a scripted answer for that one. This panel is rule-based rather than generative, so it only covers the questions it was built for &mdash; try one of the prompts on the left, which span settlement risk, a single entity's shortfall, absorbed card fees, NSF returns, month-over-month collection, and properties that changed entity ownership.",
   tableHtml: "",
   sources: [],
   actions: [],
 };
+
+/* ---------------------------------------------------------------------------
+   Proactive briefing
+   ------------------------------------------------------------------------ */
+
+const URGENCY_PILL = { critical: "critical", high: "high", medium: "medium", low: "low" };
+
+/* Every recommendation is derived from the same data the other views render,
+   ranked so that anything which becomes unfixable at the settlement cutoff
+   outranks anything that is merely expensive. Dollar impact breaks ties
+   within a tier. */
+function buildRecommendations() {
+  const d = AppState.data;
+  const recs = [];
+  const byType = (t) => d.exceptions.filter((e) => e.type === t);
+  const sumImpact = (list) => list.reduce((s, e) => s + Math.abs(e.impact_cents), 0);
+  const active = AppState.getActiveEntities();
+
+  const unrecoverable = active.filter((e) => e.funding_risk === "unrecoverable");
+  if (unrecoverable.length) {
+    recs.push({
+      urgency: "critical",
+      impact: unrecoverable.reduce((s, e) => s + Math.abs(e.variance_cents), 0),
+      title: `Escalate ${unrecoverable.length} entit${unrecoverable.length === 1 ? "y" : "ies"} that can no longer clear by the 10th`,
+      why: `${unrecoverable.map((e) => e.name).join(", ")} ${unrecoverable.length === 1 ? "is" : "are"} past the point where reinitiating a payout still lands by ${Fmt.date(d.meta.target_day)}. Fixing the bank details today does not recover the deadline, so this needs a funding decision outside the normal payout path rather than another retry.`,
+      action: {
+        label: "Escalate to Treasury via Stripe MCP",
+        result: `Simulated: pulled each blocked payout and its failure reason via the Stripe MCP server, then opened a Treasury funding request for ${unrecoverable.map((e) => e.name).join(", ")} flagged unrecoverable by deadline.`,
+      },
+    });
+  }
+
+  const recoverable = active.filter((e) => e.payout_status === "failed" && e.funding_risk !== "unrecoverable");
+  if (recoverable.length) {
+    recs.push({
+      urgency: "critical",
+      impact: recoverable.reduce((s, e) => s + Math.abs(e.variance_cents), 0),
+      title: `Reinitiate ${recoverable.length} returned payout${recoverable.length === 1 ? "" : "s"} before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff`,
+      why: `${recoverable.map((e) => e.name).join(", ")} can still fund by the 10th, but only if the payout is reinitiated within ${d.meta.days_until_initiate_cutoff} day${d.meta.days_until_initiate_cutoff === 1 ? "" : "s"} to clear T+2. This is the one item on this list where waiting changes the outcome.`,
+      action: {
+        label: "Reinitiate payouts via Stripe MCP",
+        result: `Simulated: re-created the returned payouts for ${recoverable.map((e) => e.name).join(", ")} against verified bank details via the Stripe MCP server. New settlement lands before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff.`,
+      },
+    });
+  }
+
+  const nsf = byType("nsf_after_payout");
+  if (nsf.length) {
+    recs.push({
+      urgency: "high",
+      impact: sumImpact(nsf),
+      title: `Resolve ${Fmt.money(sumImpact(nsf))} of over-funding from ${nsf.length} NSF return${nsf.length === 1 ? "" : "s"} after payout`,
+      why: `These residents' rent payments were returned after the entity had already been paid out, so ${nsf.length === 1 ? "that entity is" : "those entities are"} holding money the portfolio never collected. Left alone it silently distorts next month's opening balance.`,
+      action: {
+        label: "Retry debits and net the shortfall via Stripe MCP",
+        result: `Simulated: re-presented each returned ACH debit via the Stripe MCP server and scheduled the unrecovered balance to net against ${nsf.map((e) => e.entity_name).join(", ")}'s next payout instead of a manual journal entry.`,
+      },
+    });
+  }
+
+  const stale = byType("stale_mapping");
+  if (stale.length) {
+    recs.push({
+      urgency: "high",
+      impact: sumImpact(stale),
+      title: `Correct ${stale.length} stale connected-account mapping${stale.length === 1 ? "" : "s"}`,
+      why: `${Fmt.money(sumImpact(stale))} of rent routed to the prior owner's connected account after ${stale.length === 1 ? "a property" : "properties"} changed entities. Until the mapping is fixed this recurs every month, so correcting it prevents next month's exception rather than just clearing this one.`,
+      action: {
+        label: "Update account mapping via Stripe MCP",
+        result: `Simulated: repointed the affected properties to the correct connected accounts via the Stripe MCP server and transferred the misrouted ${Fmt.money(sumImpact(stale))} to the receiving ${stale.length === 1 ? "entity" : "entities"}.`,
+      },
+    });
+  }
+
+  const dup = byType("duplicate_payment");
+  if (dup.length) {
+    recs.push({
+      urgency: "medium",
+      impact: sumImpact(dup),
+      title: `Refund ${dup.length} duplicate rent payment${dup.length === 1 ? "" : "s"}`,
+      why: `${Fmt.money(sumImpact(dup))} was charged twice on the same lease. Every day this sits is a day a resident is out of pocket for rent they already paid, which is the fastest of these items to become a support escalation.`,
+      action: {
+        label: "Refund duplicates via Stripe MCP",
+        result: `Simulated: issued refunds for the duplicate charges via the Stripe MCP server, leaving the original payments and the entities' statements untouched.`,
+      },
+    });
+  }
+
+  const short = byType("short_payment");
+  if (short.length) {
+    recs.push({
+      urgency: "medium",
+      impact: sumImpact(short),
+      title: `Collect ${Fmt.money(sumImpact(short))} in short-paid rent across ${short.length} lease${short.length === 1 ? "" : "s"}`,
+      why: `${short.length === 1 ? "A resident" : "These residents"} paid less than the lease amount, so the entity's rent roll and its settlement disagree. The convention here is to pursue the resident rather than restate the entity's statement.`,
+      action: {
+        label: "Invoice the shortfall via Stripe MCP",
+        result: `Simulated: created a balance-due invoice for each short-paid lease via the Stripe MCP server and left the affected entities' statements unadjusted per the standard disposition.`,
+      },
+    });
+  }
+
+  const appfee = byType("app_fee_misroute");
+  if (appfee.length) {
+    recs.push({
+      urgency: "medium",
+      impact: sumImpact(appfee),
+      title: `Reverse ${Fmt.money(sumImpact(appfee))} of misrouted application fees`,
+      why: `The platform fee was taken on ${appfee.length === 1 ? "a charge" : "charges"} where it should not have been, so the platform is holding revenue that belongs to the ${appfee.length === 1 ? "entity" : "entities"}.`,
+      action: {
+        label: "Reverse application fees via Stripe MCP",
+        result: `Simulated: reversed the misrouted application fees via the Stripe MCP server, returning ${Fmt.money(sumImpact(appfee))} to the affected ${appfee.length === 1 ? "entity" : "entities"}.`,
+      },
+    });
+  }
+
+  // Not an exception, but the largest recurring number on the screen.
+  const mig = achMigrationOpportunity();
+  if (mig) {
+    recs.push({
+      urgency: "medium",
+      impact: mig.monthlySavingsCents,
+      title: `Move card-paying residents to ACH to stop absorbing ~${Fmt.moneyShort(mig.monthlySavingsCents)}/mo`,
+      why: `${Fmt.int(mig.cardCharges)} rent payments a month arrive on card at an average of ${Fmt.money(mig.avgChargeCents)}, costing ${Fmt.money(mig.cardFeePerChargeCents)} each in fees the operator absorbs. The same payment on ACH costs ${Fmt.money(mig.achFeePerChargeCents)} because the ${Fmt.money(d.meta.fee_assumptions.ach_cap_cents)} cap binds well below rent-sized amounts. This is the single largest controllable cost on the platform, and it rests on the unverified ACH rate flagged in the assumptions panel.`,
+      action: {
+        label: "Send ACH enrollment links via Stripe MCP",
+        result: `Simulated: generated ACH enrollment links for the ${Fmt.int(mig.cardCharges)} card-paying leases via the Stripe MCP server and queued them behind the operator's existing resident communication approval step.`,
+      },
+    });
+  }
+
+  const wcp = d.waiver_current_period;
+  if (wcp.no_prior_failure_count) {
+    const pct = (wcp.no_prior_failure_count / wcp.count) * 100;
+    recs.push({
+      urgency: "low",
+      impact: Math.round(wcp.total_cents * (wcp.no_prior_failure_count / wcp.count)),
+      title: `Tighten waiver eligibility &mdash; ${pct.toFixed(0)}% of waivers went to residents with no prior failure`,
+      why: `${Fmt.int(wcp.no_prior_failure_count)} of ${Fmt.int(wcp.count)} fee waivers this period went to residents who had never had a payment fail, so the waiver was used as a convenience rather than to recover a relationship. That pattern, not the headline total, is the part that is actually addressable by policy.`,
+      action: {
+        label: "Draft a waiver-eligibility rule via Stripe MCP",
+        result: `Simulated: pulled the ${Fmt.int(wcp.no_prior_failure_count)} no-prior-failure waivers via the Stripe MCP server and drafted an eligibility rule requiring a prior failed payment, routed to the fee-policy owner for approval.`,
+      },
+    });
+  }
+
+  const arrears = (d.residents || []).filter(
+    (r) => r.lease_status !== "vacated" && r.payment_history[r.payment_history.length - 1].status === "failed"
+  );
+  if (arrears.length) {
+    const owed = arrears.reduce((s, r) => s + r.monthly_rent_cents, 0);
+    recs.push({
+      urgency: "high",
+      impact: owed,
+      title: `Chase ${arrears.length} leases in arrears right now (${Fmt.money(owed)} of rent)`,
+      why: `These are leases whose most recent rent payment failed and has not been cured, sampled across the portfolio. Unlike the exception queue, nothing here is a reconciliation error &mdash; it is simply rent that has not arrived and is not being chased by anything automatic.`,
+      action: {
+        label: "Batch retry debits via Stripe MCP",
+        result: `Simulated: re-presented the failed debit on all ${arrears.length} leases in arrears via the Stripe MCP server and queued a notice to each resident that a retry is scheduled.`,
+      },
+    });
+  }
+
+  const order = { critical: 0, high: 1, medium: 2, low: 3 };
+  return recs.sort((a, b) => order[a.urgency] - order[b.urgency] || b.impact - a.impact);
+}
+
+/* What the portfolio's card volume would cost on ACH instead. Derived from
+   the documented payment mix and the operator's negotiated card rate; the
+   ACH side depends on the unverified ACH placeholder, so callers must say so.
+   Returns null rather than guessing if the inputs are missing. */
+function achMigrationOpportunity() {
+  const d = AppState.data;
+  const fa = d.meta.fee_assumptions;
+  const mix = d.meta.payment_mix;
+  if (!fa || !mix || !d.totals.card_volume_cents) return null;
+
+  const cardCharges = Math.round(d.meta.total_charges_modeled * mix.card);
+  if (!cardCharges) return null;
+
+  const avgChargeCents = d.totals.card_volume_cents / cardCharges;
+  const cardFeePerChargeCents = (avgChargeCents * fa.card_domestic_bps) / 10000 + fa.card_domestic_fixed_cents;
+  const achFeePerChargeCents = Math.min((avgChargeCents * fa.ach_bps) / 10000, fa.ach_cap_cents);
+  const monthlySavingsCents = Math.round((cardFeePerChargeCents - achFeePerChargeCents) * cardCharges);
+
+  return {
+    cardCharges,
+    avgChargeCents,
+    cardFeePerChargeCents,
+    achFeePerChargeCents,
+    monthlySavingsCents,
+    annualSavingsCents: monthlySavingsCents * 12,
+  };
+}
+
+function renderBriefing(messages) {
+  const d = AppState.data;
+  const recs = buildRecommendations();
+  const shown = recs.slice(0, 6);
+  const hidden = recs.length - shown.length;
+
+  const openExceptions = AppState.getOpenExceptions();
+  const unrecoverable = AppState.getActiveEntities().filter((e) => e.funding_risk === "unrecoverable");
+
+  const el = document.createElement("div");
+  el.className = "msg-briefing";
+  el.innerHTML = `
+    <div class="briefing-head">
+      <span class="briefing-kicker">Opening briefing &middot; ${d.meta.model_month_label} close</span>
+      <h2 class="briefing-title">${d.meta.days_remaining} day${d.meta.days_remaining === 1 ? "" : "s"} to fund every entity, ${openExceptions.length} open exception${openExceptions.length === 1 ? "" : "s"}, ${Fmt.moneyShort(d.totals.total_in_flight_cents)} still in flight.</h2>
+      <div class="briefing-sub">
+        ${AppState.getReconciledCount()} of ${d.meta.num_entities_active} entities reconciled &middot;
+        ${Fmt.moneyShort(d.totals.total_collected_cents)} collected &middot;
+        ${Fmt.moneyShort(d.totals.total_settled_cents)} settled${unrecoverable.length ? ` &middot; <span class="text-blocked">${unrecoverable.length} unrecoverable by deadline</span>` : ""}
+      </div>
+    </div>
+
+    <div class="briefing-recs">
+      ${shown.map((r, i) => `
+        <div class="rec-item">
+          <div class="rec-top">
+            <span class="pill pill-${URGENCY_PILL[r.urgency]}">${r.urgency}</span>
+            <span class="rec-title">${r.title}</span>
+          </div>
+          <div class="rec-why">${r.why}</div>
+          <div class="agent-actions">
+            <button class="agent-action-btn" data-rec-idx="${i}">${r.action.label}</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+
+    ${hidden > 0 ? `<div class="briefing-more">${hidden} lower-priority recommendation${hidden === 1 ? "" : "s"} not shown here; the full exception queue is on the Close tab.</div>` : ""}
+
+    <div class="briefing-disclosure">
+      This briefing is <strong>computed</strong>, not generated. The ranking is a fixed rule &mdash; anything that becomes unfixable at the T+2 settlement cutoff outranks anything merely expensive, with dollar impact breaking ties &mdash; applied to the same JSON every other tab reads. There is no language model here and no network call. It stands in for the pattern the demo is about: Stripe data landing in the warehouse via <strong>Data Pipeline</strong>, and Stripe reachable as a tool via the <strong>MCP server</strong>, so an agent can arrive already knowing what is wrong and hand back a specific action instead of a chart. Every action below is <strong>simulated</strong>.
+    </div>
+  `;
+
+  messages.appendChild(el);
+
+  el.querySelectorAll("[data-rec-idx]").forEach((btn) => {
+    const rec = shown[Number(btn.dataset.recIdx)];
+    btn.addEventListener("click", () => runAgentAction(rec.action, btn, messages, btn.closest(".rec-item")));
+  });
+}
 
 function renderAsk() {
   const root = document.getElementById("view-ask");
@@ -31,6 +286,8 @@ function renderAsk() {
       </div>
     </div>
   `;
+
+  renderBriefing(document.getElementById("ask-messages"));
 
   const chipsEl = document.getElementById("ask-chips");
   ASK_QUESTIONS.forEach((q) => {
@@ -94,7 +351,11 @@ function askQuestion(text) {
   });
 }
 
-function runAgentAction(action, btn, messages) {
+/* `anchorEl`, when given, places the result immediately after that element
+   instead of at the bottom of the thread — needed for the briefing, whose
+   recommendations sit at the top and would otherwise report their outcome
+   somewhere off-screen. */
+function runAgentAction(action, btn, messages, anchorEl) {
   btn.disabled = true;
   btn.textContent = "Done";
   btn.classList.add("done");
@@ -103,8 +364,13 @@ function runAgentAction(action, btn, messages) {
   resultBubble.className = "msg-agent-result";
   resultBubble.style.opacity = "0";
   resultBubble.innerHTML = `<span class="agent-result-icon">&#9889;</span> ${action.result}`;
-  messages.appendChild(resultBubble);
-  messages.scrollTop = messages.scrollHeight;
+
+  if (anchorEl) {
+    anchorEl.appendChild(resultBubble);
+  } else {
+    messages.appendChild(resultBubble);
+    messages.scrollTop = messages.scrollHeight;
+  }
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -176,14 +442,14 @@ function answerAtRisk() {
   const actions = [];
   if (atRisk.length) {
     actions.push({
-      label: `Reinitiate payout for ${atRisk.length === 1 ? atRisk[0].name : `${atRisk.length} at-risk entities`}`,
-      result: `Reinitiated payout for ${atRisk.map((e) => e.name).join(", ")}. New settlement date lands before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff.`,
+      label: `Reinitiate payout for ${atRisk.length === 1 ? atRisk[0].name : `${atRisk.length} at-risk entities`} via Stripe MCP`,
+      result: `Simulated: reinitiated payout for ${atRisk.map((e) => e.name).join(", ")} via the Stripe MCP server. New settlement date lands before the ${Fmt.date(d.meta.initiate_cutoff)} cutoff.`,
     });
   }
   if (unrecoverable.length) {
     actions.push({
       label: `Escalate ${unrecoverable.length === 1 ? unrecoverable[0].name : `${unrecoverable.length} unrecoverable entities`} to Treasury`,
-      result: `Escalated ${unrecoverable.map((e) => e.name).join(", ")} to Treasury ops as unrecoverable by deadline &mdash; flagged for manual funding outside the normal payout path.`,
+      result: `Simulated: pulled each blocked payout and its failure reason via the Stripe MCP server, then escalated ${unrecoverable.map((e) => e.name).join(", ")} to Treasury ops as unrecoverable by deadline &mdash; flagged for manual funding outside the normal payout path.`,
     });
   }
 
@@ -212,8 +478,8 @@ function answerCedarRow() {
   `;
   const actions = excs.length
     ? [
-        { label: "Send resident a payment reminder", result: `Payment reminder queued to the resident on the delinquent lease at ${entity.name} via the property's customer communication workflow.` },
-        { label: "Move resident's account to collections", result: `Resident account flagged for collections handoff at ${entity.name}. Status change logged for property ops; ${entity.name}'s statement is left unadjusted per the standard disposition.` },
+        { label: "Send resident a payment reminder via Stripe MCP", result: `Simulated: queued a payment reminder to the resident on the delinquent lease at ${entity.name} via the Stripe MCP server.` },
+        { label: "Move resident's account to collections", result: `Simulated: flagged the resident account for collections handoff at ${entity.name}. Status change logged for property ops; ${entity.name}'s statement is left unadjusted per the standard disposition.` },
       ]
     : [];
   return { lede, tableHtml, sources, actions };
@@ -239,8 +505,8 @@ function answerWaivedFees() {
   const noPriorPct = (wcp.no_prior_failure_count / wcp.count) * 100;
   const actions = [
     {
-      label: "Flag no-prior-failure waivers for policy review",
-      result: `Flagged ${Fmt.int(wcp.no_prior_failure_count)} waivers (${noPriorPct.toFixed(0)}% of this period's total) applied to residents with no prior payment failure. Sent to the fee-policy owner for review as likely shortcut usage rather than recovery.`,
+      label: "Flag no-prior-failure waivers via Stripe MCP",
+      result: `Simulated: pulled ${Fmt.int(wcp.no_prior_failure_count)} waivers (${noPriorPct.toFixed(0)}% of this period's total) applied to residents with no prior payment failure via the Stripe MCP server, and sent them to the fee-policy owner for review as likely shortcut usage rather than recovery.`,
     },
   ];
   return { lede, tableHtml, sources, actions };
@@ -262,8 +528,8 @@ function answerNsfReturns() {
   const sources = nsfExcs.flatMap((e) => e.citations);
   const actions = nsfExcs.length
     ? [
-        { label: "Retry ACH debit for affected residents", result: `ACH retry queued for the residents behind ${nsfExcs.map((e) => e.entity_name).join(", ")}'s returned payments.` },
-        { label: "Send NSF notice to residents", result: `NSF notice queued to the residents on ${nsfExcs.map((e) => e.entity_name).join(", ")}, explaining the returned payment and next debit attempt.` },
+        { label: "Retry ACH debits via Stripe MCP", result: `Simulated: re-presented the returned ACH debits for the residents behind ${nsfExcs.map((e) => e.entity_name).join(", ")}'s payments via the Stripe MCP server.` },
+        { label: "Send NSF notices via Stripe MCP", result: `Simulated: queued an NSF notice to the residents on ${nsfExcs.map((e) => e.entity_name).join(", ")} via the Stripe MCP server, explaining the returned payment and the next debit attempt.` },
       ]
     : [];
   return { lede, tableHtml, sources, actions };
@@ -281,7 +547,7 @@ function answerCollectionComparison() {
   `).join("");
   const tableHtml = `<table><thead><tr><th>Month</th><th class="num">Total collected</th><th class="num">Total settled</th><th class="num">Exceptions</th></tr></thead><tbody>${rows}</tbody></table>`;
   const actions = [
-    { label: "Export month-over-month report to Finance", result: `Collection trend report for ${last.month} vs. ${prev.month} exported and sent to Finance.` },
+    { label: "Export month-over-month report to Finance", result: `Simulated: assembled the collection trend for ${last.month} vs. ${prev.month} from the warehouse and sent it to Finance.` },
   ];
   return { lede, tableHtml, sources: ["monthly collection totals (aggregated)"], actions };
 }
@@ -312,8 +578,8 @@ function answerEntityMoves() {
   const sources = staleExcs.flatMap((e) => e.citations);
   const actions = staleExcs.length
     ? [
-        { label: "Update connected-account mapping", result: `Connected-account mapping corrected for ${staleExcs.length} propert${staleExcs.length === 1 ? "y" : "ies"} &mdash; future charges route directly to ${staleExcs.length === 1 ? "the correct entity" : "the correct entities"}.` },
-        { label: "Notify entity ops of the mapping fix", result: `Entity ops notified that the stale mapping on ${staleExcs.map((e) => e.entity_name).join(", ")} has been corrected.` },
+        { label: "Update connected-account mapping via Stripe MCP", result: `Simulated: corrected the connected-account mapping for ${staleExcs.length} propert${staleExcs.length === 1 ? "y" : "ies"} via the Stripe MCP server &mdash; future charges route directly to ${staleExcs.length === 1 ? "the correct entity" : "the correct entities"}.` },
+        { label: "Notify entity ops of the mapping fix", result: `Simulated: notified entity ops that the stale mapping on ${staleExcs.map((e) => e.entity_name).join(", ")} has been corrected.` },
       ]
     : [];
   return { lede, tableHtml, sources, actions };

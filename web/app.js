@@ -95,6 +95,31 @@ const AppState = {
   },
 };
 
+/* Shared simulated-action affordance, used by the Close, Margin, and Residents
+   views. Disables the button and drops a canned result into `container`.
+   Nothing leaves the page — there is no Stripe call behind any of these; the
+   buttons exist to show the shape of what an MCP-connected agent would do.
+   The Ask view has its own variant that also manages thread scrolling. */
+function simulateAgentAction(btn, resultText, container) {
+  btn.disabled = true;
+  btn.textContent = "Done";
+  btn.classList.add("done");
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg-agent-result";
+  bubble.style.marginTop = "8px";
+  bubble.style.opacity = "0";
+  bubble.innerHTML = `<span class="agent-result-icon">&#9889;</span> ${resultText}`;
+  container.appendChild(bubble);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      bubble.style.transition = "opacity 0.3s ease";
+      bubble.style.opacity = "1";
+    });
+  });
+}
+
 function renderAssumptionsPanel() {
   const root = document.getElementById("assumptions-panel");
   const assumptions = AppState.data.meta.assumptions || [];

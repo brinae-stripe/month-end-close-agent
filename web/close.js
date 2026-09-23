@@ -1,6 +1,58 @@
-/* Month-End Close Agent — Close view: month-end reconciliation board. */
+/* Month-End Close Agent — Close view: month-end reconciliation board.
+
+   Each exception already carries a computed `disposition` — the proposed
+   resolution. The MCP action below is the other half of that: the specific
+   Stripe call that would carry the disposition out. Approve/Send to review
+   stay separate on purpose, so executing the mechanical fix and signing off
+   on the reconciliation remain two decisions rather than one. */
 
 let closeFilterText = "";
+
+/* The Stripe-side fix for each exception type. Keyed off exc.type so a new
+   exception type in the generator fails loudly here (no action rendered)
+   rather than silently getting a generic button that claims to fix it. */
+function exceptionMcpAction(exc) {
+  const amount = Fmt.money(Math.abs(exc.impact_cents));
+  switch (exc.type) {
+    case "payout_failed":
+      return exc.unrecoverable_by_deadline
+        ? {
+            label: "Escalate to Treasury",
+            result: `Simulated: pulled the returned payout and its failure reason for ${exc.entity_name} via the Stripe MCP server and opened a Treasury funding request. Reinitiating would not clear by the 10th, so this deliberately skips the retry path.`,
+          }
+        : {
+            label: "Reinitiate payout via MCP",
+            result: `Simulated: re-created the returned payout for ${exc.entity_name} against verified bank details via the Stripe MCP server.`,
+          };
+    case "nsf_after_payout":
+      return {
+        label: "Retry debit + net via MCP",
+        result: `Simulated: re-presented the returned ACH debit via the Stripe MCP server and scheduled the unrecovered ${amount} to net against ${exc.entity_name}'s next payout, rather than a manual journal entry.`,
+      };
+    case "stale_mapping":
+      return {
+        label: "Fix mapping via MCP",
+        result: `Simulated: repointed the property to ${exc.entity_name}'s connected account via the Stripe MCP server and transferred the misrouted ${amount} across from ${exc.counterparty_entity_name}. This also stops the exception recurring next month.`,
+      };
+    case "app_fee_misroute":
+      return {
+        label: "Reverse app fee via MCP",
+        result: `Simulated: reversed the misrouted application fee via the Stripe MCP server, returning ${amount} to ${exc.entity_name}.`,
+      };
+    case "short_payment":
+      return {
+        label: "Invoice shortfall via MCP",
+        result: `Simulated: created a ${amount} balance-due invoice on the short-paid lease via the Stripe MCP server. ${exc.entity_name}'s statement is left unadjusted per the standard disposition.`,
+      };
+    case "duplicate_payment":
+      return {
+        label: "Refund duplicate via MCP",
+        result: `Simulated: refunded the duplicate ${amount} charge via the Stripe MCP server, leaving the original payment to ${exc.entity_name} untouched.`,
+      };
+    default:
+      return null;
+  }
+}
 
 function renderClose() {
   const root = document.getElementById("view-close");
@@ -65,6 +117,15 @@ function renderClose() {
   root.querySelectorAll(".review-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleExceptionAction(btn.dataset.excId, "review"));
   });
+  root.querySelectorAll(".mcp-fix-btn").forEach((btn) => {
+    const exc = d.exceptions.find((e) => e.id === btn.dataset.excId);
+    const mcp = exceptionMcpAction(exc);
+    btn.addEventListener("click", () => simulateAgentAction(
+      btn,
+      `${mcp.result} <em>Still needs your approval.</em>`,
+      btn.closest(".exception-card").querySelector(".exception-body")
+    ));
+  });
 
   const filterInput = document.getElementById("entity-filter-input");
   filterInput.addEventListener("input", (e) => {
@@ -76,6 +137,7 @@ function renderClose() {
 }
 
 function exceptionCardHtml(exc) {
+  const mcp = exceptionMcpAction(exc);
   const impactClass = exc.impact_direction === "blocked" ? "text-blocked" : `text-${exc.impact_direction}`;
   const impactLabel = exc.impact_direction === "blocked" ? "blocked" : exc.impact_direction === "over" ? "over-funded" : "under-funded";
   const entityLabel = exc.counterparty_entity_name
@@ -95,6 +157,7 @@ function exceptionCardHtml(exc) {
         <div class="exception-citations">Sources: ${exc.citations.join(", ")}</div>
       </div>
       <div class="exception-actions">
+        ${mcp ? `<button class="agent-action-btn mcp-fix-btn" data-exc-id="${exc.id}">${mcp.label}</button>` : ""}
         <button class="action-btn approve approve-btn" data-exc-id="${exc.id}">Approve</button>
         <button class="action-btn review-btn" data-exc-id="${exc.id}">Send to review</button>
       </div>

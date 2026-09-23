@@ -152,28 +152,6 @@ function recommendResidentActions(r, s) {
   return actions;
 }
 
-/* Same click-to-simulate behavior the Ask view uses: disable the button and
-   drop a canned result next to it. Nothing leaves the page. */
-function simulateResidentAction(btn, resultText) {
-  btn.disabled = true;
-  btn.textContent = "Done";
-  btn.classList.add("done");
-
-  const bubble = document.createElement("div");
-  bubble.className = "msg-agent-result";
-  bubble.style.marginTop = "8px";
-  bubble.style.opacity = "0";
-  bubble.innerHTML = `<span class="agent-result-icon">&#9889;</span> ${resultText}`;
-  btn.closest(".agent-actions").insertAdjacentElement("afterend", bubble);
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      bubble.style.transition = "opacity 0.3s ease";
-      bubble.style.opacity = "1";
-    });
-  });
-}
-
 function renderResidents() {
   const root = document.getElementById("view-residents");
   const d = AppState.data;
@@ -347,14 +325,15 @@ function renderResidents() {
   root.querySelectorAll("[data-risk-index]").forEach((btn) => {
     const { r, s } = flagged[Number(btn.dataset.riskIndex)];
     const action = recommendResidentActions(r, s)[Number(btn.dataset.actionIndex)];
-    btn.addEventListener("click", () => simulateResidentAction(btn, action.result));
+    btn.addEventListener("click", () => simulateAgentAction(btn, action.result, btn.closest(".risk-flag-card")));
   });
 
   const sweepBtn = document.getElementById("moveout-credit-action");
   if (sweepBtn) {
-    sweepBtn.addEventListener("click", () => simulateResidentAction(
+    sweepBtn.addEventListener("click", () => simulateAgentAction(
       sweepBtn,
-      `Simulated: queued refunds for all ${moveOutCredits.length} unapplied move-out credit balances (${Fmt.money(moveOutCreditTotal)} total) via the Stripe MCP server, attaching each to its lease's deposit disposition.`
+      `Simulated: queued refunds for all ${moveOutCredits.length} unapplied move-out credit balances (${Fmt.money(moveOutCreditTotal)} total) via the Stripe MCP server, attaching each to its lease's deposit disposition.`,
+      sweepBtn.closest(".card")
     ));
   }
 

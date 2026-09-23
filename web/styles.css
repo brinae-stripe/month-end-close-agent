@@ -449,6 +449,87 @@ button.agent-action-btn.done {
 
 .agent-result-icon { color: var(--good); margin-right: 4px; }
 
+/* Opening briefing — the first thing on screen, so it reads full-width rather
+   than as a chat bubble like the answers below it. */
+.msg-briefing {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.briefing-head { border-bottom: 1px solid var(--border); padding-bottom: 14px; }
+
+.briefing-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.briefing-title {
+  margin: 8px 0 6px;
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.briefing-sub { font-size: 13px; color: var(--text-dim); }
+
+.briefing-recs { display: flex; flex-direction: column; gap: 4px; }
+
+.rec-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.rec-item:last-child { border-bottom: none; padding-bottom: 4px; }
+
+.rec-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.rec-title { font-size: 14.5px; font-weight: 600; line-height: 1.4; }
+
+.rec-why { font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+
+.briefing-more {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.briefing-disclosure {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+.briefing-disclosure strong { color: var(--text-dim); }
+
+/* Margin view's recommendation block reuses the rec layout but leads with the
+   dollar figure the lever is worth instead of an urgency pill. */
+.rec-card { margin-top: 20px; }
+
+.rec-card-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+
+.rec-saving {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--good);
+  background: rgba(31,111,74,0.08);
+  border: 1px solid rgba(31,111,74,0.25);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
 .ask-input-row {
   display: flex;
   gap: 10px;

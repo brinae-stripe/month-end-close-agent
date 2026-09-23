@@ -13,9 +13,10 @@ unmistakable.
 
 ## What it is
 
-- Four views: **Close** (month-end reconciliation board), **Ask** (a
-  scripted, non-generative Q&A panel), **Margin** (absorbed card-fee
-  cost made visible), and **Residents** (tenant/lease-level payment
+- Four views, in tab order: **Ask** (the landing surface — an opening
+  briefing plus a scripted, non-generative Q&A panel), **Close** (month-end
+  reconciliation board), **Margin** (absorbed card-fee cost made visible and
+  actionable), and **Residents** (tenant/lease-level payment
   behavior, sourced only from fields documented at
   [docs.stripe.com/data/schema](https://docs.stripe.com/data/schema):
   on-time/late/NSF rent payment rates, lease renewal and rent-increase
@@ -58,8 +59,33 @@ unmistakable.
   gross, fee, and net — rather than collapsing to a single total.
 - The "Ask" panel is **not** wired to any language model. Its six suggested
   questions and free-text fallback are scripted; every answer is computed
-  from the same JSON the other two views read, so the numbers always agree
+  from the same JSON the other three views read, so the numbers always agree
   across views.
+- Ask is the **landing view**, and it opens with a briefing rather than an
+  empty prompt — the argument being that an agent with the data already in
+  hand shouldn't wait to be asked. The briefing ranks every finding in the
+  period by a fixed rule: anything that becomes unfixable at the T+2
+  settlement cutoff outranks anything merely expensive, with dollar impact
+  breaking ties. Each recommendation carries the one Stripe call that would
+  resolve it. Like every answer on the page it is computed, not generated,
+  and says so on screen.
+- **Every view ends in an action, not a number.** Each exception on the
+  Close view renders the specific Stripe-side fix for its type — reinitiate
+  a returned payout, or escalate it to Treasury when reinitiating could no
+  longer clear by the 10th; re-present a returned debit and net the
+  shortfall against the next payout; repoint a stale mapping and transfer
+  the misrouted funds across. Executing the mechanical fix and signing off
+  on the reconciliation stay two separate buttons on purpose. The Margin
+  view ranks four levers largest-saving-first, including the ~$467K/month
+  of card fees that migrating rent to ACH would stop absorbing (the ACH cap
+  binds far below rent-sized payments) and the 32% of this period's fee
+  waivers that went to residents who had never had a payment fail.
+- The framing throughout is **Stripe Data Pipeline plus the Stripe MCP
+  server**: SDP lands Stripe data in the warehouse so a query like
+  "absorbed fees by entity this period" is answerable at all, and the MCP
+  server makes Stripe reachable as a tool so the answer can be acted on in
+  the same step. **Every action in this demo is simulated** — clicking a
+  button injects a canned result and makes no network call of any kind.
 - Fee assumptions on the Margin view use this operator's **negotiated
   Connect pricing** (2.50% + $0.20 domestic card, 4.00% + $0.20
   international card, ~1% of card volume assumed international). ACH
@@ -120,11 +146,12 @@ generate_data.py       synthetic data generator (Python stdlib only)
 web/
   index.html
   styles.css
-  app.js               shared state: data loading, tab switching, live approval state
-  close.js             Close view
-  ask.js                Ask view (scripted Q&A)
-  margin.js             Margin view
-  residents.js          Residents view (tenant/lease stats + risk-scoring pass)
+  app.js               shared state: data loading, tab switching, live approval
+                       state, shared simulated-action handler
+  ask.js               Ask view — landing page: opening briefing + scripted Q&A
+  close.js             Close view (exception queue + per-type Stripe fix action)
+  margin.js            Margin view (absorbed cost + ranked recommendations)
+  residents.js         Residents view (tenant/lease stats + risk-scoring pass)
   svg-charts.js         inline-SVG line chart helper (no charting library)
   data/reconciliation.json   generated output (not hand-edited)
 run.sh                 regenerate data + launch

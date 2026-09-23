@@ -1,4 +1,71 @@
-/* Month-End Close Agent — Margin view: absorbed cost made visible. */
+/* Month-End Close Agent — Margin view: absorbed cost made visible, and
+   actionable. Making a cost visible is only half the job; every figure on
+   this page previously ended in a number with nothing attached to it. The
+   recommendations block turns each one into a specific Stripe-side change,
+   which is the whole argument for having the data in the warehouse and
+   Stripe reachable as a tool. */
+
+/* Ranked largest-saving-first. Each entry names the lever, not just the
+   number, and carries the one Stripe call that would pull it. */
+function buildMarginRecommendations(ctx) {
+  const d = AppState.data;
+  const recs = [];
+  const mig = achMigrationOpportunity();
+
+  if (mig) {
+    recs.push({
+      savingsLabel: `~${Fmt.moneyShort(mig.monthlySavingsCents)}/mo`,
+      title: "Migrate card-paying residents to ACH",
+      why: `${Fmt.int(mig.cardCharges)} rent payments a month arrive on card, averaging ${Fmt.money(mig.avgChargeCents)}. At the negotiated card rate that is ${Fmt.money(mig.cardFeePerChargeCents)} of fee per payment; the same payment on ACH costs ${Fmt.money(mig.achFeePerChargeCents)}, because the ACH cap binds far below rent-sized amounts. Rent is the rare category where ACH economics are overwhelming, which makes this the largest controllable line on the platform &mdash; but the ACH rate here is the unverified placeholder flagged in the assumptions panel, so treat the size as directional.`,
+      action: {
+        label: "Send ACH enrollment links via Stripe MCP",
+        result: `Simulated: generated ACH enrollment links for the ${Fmt.int(mig.cardCharges)} card-paying leases via the Stripe MCP server and queued them behind the operator's existing resident-communication approval step.`,
+      },
+    });
+  }
+
+  const wcp = d.waiver_current_period;
+  if (wcp.no_prior_failure_count) {
+    const pct = (wcp.no_prior_failure_count / wcp.count) * 100;
+    const attributable = Math.round(wcp.total_cents * (wcp.no_prior_failure_count / wcp.count));
+    recs.push({
+      savingsLabel: `~${Fmt.moneyShort(attributable)}/mo`,
+      title: "Require a prior failed payment before a fee waiver",
+      why: `${pct.toFixed(0)}% of this period's waivers went to residents who had never had a payment fail, so the waiver was doing convenience work rather than the recovery work it was designed for. That share, not the headline total, is the genuinely addressable part &mdash; the rest is arguably buying back a relationship.`,
+      action: {
+        label: "Draft eligibility rule via Stripe MCP",
+        result: `Simulated: pulled the ${Fmt.int(wcp.no_prior_failure_count)} no-prior-failure waivers via the Stripe MCP server and drafted an eligibility rule gating waivers on a prior failed payment, routed to the fee-policy owner for approval.`,
+      },
+    });
+  }
+
+  const top = ctx.top5Entities[0];
+  if (top) {
+    recs.push({
+      savingsLabel: `${Fmt.money(top.cents)}/mo`,
+      title: `Review fee pass-through with ${top.name}`,
+      why: `This single entity accounts for ${Fmt.money(top.cents)} of absorbed fees this period, the most of any in the portfolio. Concentration that high usually means one entity's residents pay by card far more than the portfolio average, which is an entity-level conversation rather than a platform-wide policy change.`,
+      action: {
+        label: "Pull entity fee breakdown via Stripe MCP",
+        result: `Simulated: assembled a per-charge fee breakdown for ${top.name} via the Stripe MCP server and drafted a pass-through proposal for the entity's next statement review.`,
+      },
+    });
+  }
+
+  // Directly answers the "nobody currently tracks where" line on the ceiling
+  // card, which previously had no follow-through at all.
+  recs.push({
+    savingsLabel: "measurement",
+    title: "Instrument absorbed cost so it stops being an estimate",
+    why: `The ceiling above is a bound, not a measurement: today's true absorbed cost sits somewhere between zero and it, and nothing currently records where. A recurring warehouse query on fee detail, joined to the waiver ledger, converts this page from an estimate into a tracked figure &mdash; which is also what makes the three items above measurable after the fact.`,
+    action: {
+      label: "Schedule a recurring fee query via Stripe MCP",
+      result: `Simulated: scheduled a recurring query over balance transaction fee detail via the Stripe MCP server, writing absorbed-fee totals per entity per month into the warehouse so this page reads a measured number instead of a modeled one.`,
+    },
+  });
+
+  return recs;
+}
 
 function renderMargin() {
   const root = document.getElementById("view-margin");
@@ -33,6 +100,8 @@ function renderMargin() {
 
   const noPriorPct = (wcp.no_prior_failure_count / wcp.count) * 100;
 
+  const recs = buildMarginRecommendations({ top5Entities });
+
   root.innerHTML = `
     <div class="margin-top">
       <div class="card">
@@ -52,6 +121,28 @@ function renderMargin() {
       <div class="margin-ceiling-figure">${Fmt.moneyShort(ceiling.ceiling_card_only_cents_month)}<span class="margin-ceiling-unit">/mo</span> &middot; ${Fmt.moneyShort(ceiling.ceiling_card_only_cents_year)}<span class="margin-ceiling-unit">/yr</span></div>
       <div class="headline-sub">Card fees only. Including wallets (priced as card): ${Fmt.moneyShort(ceiling.ceiling_with_wallet_cents_month)}/mo &middot; ${Fmt.moneyShort(ceiling.ceiling_with_wallet_cents_year)}/yr.</div>
       <div class="headline-sub">Today's actual absorbed cost sits between $0 and this ceiling &mdash; nobody currently tracks where.</div>
+    </div>
+
+    <div class="card rec-card">
+      <div class="section-title" style="margin-top:0;">What to do about it</div>
+      <div class="rec-card-sub">Every figure on this page has a lever behind it. These are ranked by how much they move, largest first.</div>
+      <div class="briefing-recs">
+        ${recs.map((r, i) => `
+          <div class="rec-item" data-margin-rec="${i}">
+            <div class="rec-top">
+              <span class="rec-saving">${r.savingsLabel}</span>
+              <span class="rec-title">${r.title}</span>
+            </div>
+            <div class="rec-why">${r.why}</div>
+            <div class="agent-actions">
+              <button class="agent-action-btn margin-rec-btn" data-margin-rec-index="${i}">${r.action.label}</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <div class="briefing-disclosure">
+        Each figure above is computed from this period's charge, fee, and waiver data &mdash; the kind of query the Stripe Data Pipeline puts in a warehouse. The buttons are what an agent with the Stripe MCP server would then execute against the account. Nothing here calls Stripe: the actions are simulated so the shape of the loop is visible without side effects.
+      </div>
     </div>
 
     <div class="card chart-card">
@@ -99,6 +190,11 @@ function renderMargin() {
       Fee assumptions: ${(fa.card_domestic_bps / 100).toFixed(2)}% + ${Fmt.money(fa.card_domestic_fixed_cents)} on domestic card, ${(fa.card_international_bps / 100).toFixed(2)}% + ${Fmt.money(fa.card_international_fixed_cents)} on international card (${(fa.card_international_share * 100).toFixed(0)}% of card volume, unverified), ${(fa.ach_bps / 100).toFixed(2)}% capped at ${Fmt.money(fa.ach_cap_cents)} on ACH (unverified). Wallets priced as card. Fee netted from the investor transfer before payout. ${fa.note}
     </div>
   `;
+
+  root.querySelectorAll(".margin-rec-btn").forEach((btn) => {
+    const rec = recs[Number(btn.dataset.marginRecIndex)];
+    btn.addEventListener("click", () => simulateAgentAction(btn, rec.action.result, btn.closest(".rec-item")));
+  });
 
   const chartPoints = d.waiver_history.map((h) => ({ label: h.month.slice(5), value: h.count }));
   renderLineChart("waiver-trend-chart", chartPoints, { formatY: (v) => Math.round(v) });
