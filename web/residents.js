@@ -4,11 +4,41 @@
    customers, invoices, charges, refunds, invoice_items,
    subscription_item_change_events, and disputes.
 
-   The "Resident Risk Signals" panel is a small rule-based scoring pass over
+   The "Rule-Based Risk Flags" panel is a small rule-based scoring pass over
    that same data, run in the browser at render time. Like the Ask view, it
    is explicitly NOT a language model and makes no network call — it is a
    deterministic point-scoring function over payment history, disclosed here
-   so nothing on screen implies more intelligence than it has. */
+   so nothing on screen implies more intelligence than it has. The
+   "recommended action" per flag is likewise scripted, not generated — it
+   exists to sketch what a Stripe-connected agent could do next (send a
+   reminder, retry a debit, escalate a dispute) via the Stripe MCP server,
+   the same way the Investor view's agent actions do. Clicking a button here
+   only simulates that outcome; no real Stripe call is made. */
+
+function recommendResidentAction(r, s) {
+  if (r.disputed) {
+    return {
+      label: "Escalate dispute via Stripe MCP",
+      result: `Simulated: opened a dispute-review task for lease ${r.lease_id} and pulled the underlying charge and evidence via the Stripe MCP server for a human to submit.`,
+    };
+  }
+  if (s.recentFailed > 0 && r.payment_method_type === "ach") {
+    return {
+      label: "Retry ACH debit via Stripe MCP",
+      result: `Simulated: queued a retry of the failed ACH debit for lease ${r.lease_id} through the Stripe MCP server and drafted a resident notification.`,
+    };
+  }
+  if (s.recentFailed > 0) {
+    return {
+      label: "Retry payment via Stripe MCP",
+      result: `Simulated: queued a retry of the failed charge for lease ${r.lease_id} through the Stripe MCP server.`,
+    };
+  }
+  return {
+    label: "Send payment reminder via Stripe MCP",
+    result: `Simulated: sent a rent-due reminder to the resident on lease ${r.lease_id} via the Stripe MCP server, referencing their late-payment history.`,
+  };
+}
 
 function scoreResident(r) {
   const recentLate = r.payment_history.filter((h) => h.status === "late").length;
@@ -165,23 +195,54 @@ function renderResidents() {
       </div>
     </div>
 
-    <div class="section-title">Resident Risk Signals</div>
+    <div class="section-title">Rule-Based Risk Flags</div>
     <div class="callout" style="margin-top:0; margin-bottom:16px;">
-      This panel is a deterministic point-scoring pass over the payment history above &mdash; late/failed payment counts, an open dispute flag, and payment method &mdash; run in your browser. It is <strong>not</strong> a language model and makes no network call; it flags patterns worth a human look, the same way the Ask view's answers are computed rather than generated.
+      This panel is a deterministic point-scoring pass over the payment history above &mdash; late/failed payment counts, an open dispute flag, and payment method &mdash; run in your browser. It is <strong>not</strong> a language model and makes no network call; it flags patterns worth a human look, the same way the Ask view's answers are computed rather than generated. The subject of each card is the resident's lease, not the property-owner entity, which is shown only as context. Each card's action button is <strong>simulated</strong> &mdash; it illustrates what a Stripe MCP-connected agent could trigger next, not a real Stripe call.
     </div>
-    <div class="risk-flag-list">
-      ${flagged.length ? flagged.map(({ r, s }) => `
+    <div class="risk-flag-list" id="risk-flag-list">
+      ${flagged.length ? flagged.map(({ r, s }, i) => {
+        const action = recommendResidentAction(r, s);
+        return `
         <div class="risk-flag-card tier-${s.tier}">
           <div class="risk-flag-top">
             <span class="pill pill-${s.tier === "high" ? "critical" : s.tier === "medium" ? "medium" : "low"}">${s.tier} risk</span>
-            <span class="risk-flag-entity">${r.entity_name} &middot; ${r.market}</span>
+            <span class="risk-flag-entity">Resident ${r.resident_id} &middot; lease under ${r.entity_name}, ${r.market}</span>
             <span class="risk-flag-rent">${Fmt.money(r.monthly_rent_cents)}/mo &middot; ${r.payment_method_type.toUpperCase()}</span>
           </div>
           <div class="risk-flag-reasons">Flagged for: ${s.reasons.join("; ")}.</div>
+          <div class="agent-actions">
+            <button class="agent-action-btn" data-risk-action="${i}">${action.label}</button>
+          </div>
         </div>
-      `).join("") : `<div class="empty-queue">No residents in this sample scored above the low-risk threshold.</div>`}
+      `;
+      }).join("") : `<div class="empty-queue">No residents in this sample scored above the low-risk threshold.</div>`}
     </div>
   `;
+
+  root.querySelectorAll("[data-risk-action]").forEach((btn) => {
+    const { r, s } = flagged[Number(btn.dataset.riskAction)];
+    const action = recommendResidentAction(r, s);
+    btn.addEventListener("click", () => {
+      btn.disabled = true;
+      btn.textContent = "Done";
+      btn.classList.add("done");
+
+      const card = btn.closest(".risk-flag-card");
+      const resultBubble = document.createElement("div");
+      resultBubble.className = "msg-agent-result";
+      resultBubble.style.marginTop = "8px";
+      resultBubble.style.opacity = "0";
+      resultBubble.innerHTML = `<span class="agent-result-icon">&#9889;</span> ${action.result}`;
+      card.appendChild(resultBubble);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resultBubble.style.transition = "opacity 0.3s ease";
+          resultBubble.style.opacity = "1";
+        });
+      });
+    });
+  });
 
   renderLineChart("ontime-trend-chart", chartPoints, { formatY: (v) => `${Math.round(v)}%` });
 }

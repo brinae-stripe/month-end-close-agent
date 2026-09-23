@@ -21,9 +21,13 @@ unmistakable.
   on-time/late/NSF rent payment rates, lease renewal and rent-increase
   rates, security deposit held/refunded/withheld totals, and rent-charge
   dispute rate, on a weighted sample of 480 synthetic leases. Its
-  "Resident Risk Signals" panel is a deterministic point-scoring pass over
+  "Rule-Based Risk Flags" panel is a deterministic point-scoring pass over
   that same payment history, run in the browser — like Ask, it is
-  explicitly not a language model and makes no network call.
+  explicitly not a language model and makes no network call. Each flagged
+  lease shows the resident, not the property-owner entity, as the subject,
+  with a simulated recommended action (send reminder, retry debit, escalate
+  dispute) styled after a Stripe MCP-connected agent — illustrating what's
+  possible, not a real Stripe call.
 - Modeled on **81 connected accounts**: 64 active entities in scope for
   the current month's reconciliation (~$92M of rent volume across
   ~47,000 homes and ~44,000 charges) plus 17 dormant entities carried for
