@@ -73,6 +73,17 @@ To regenerate the data without starting the server:
 python3 generate_data.py
 ```
 
+## Deploying to Vercel
+
+The app is a static site rooted at `web/`, with `web/data/reconciliation.json`
+pre-generated and committed — there's no build step. `vercel.json` sets
+`outputDirectory: "web"` so Vercel serves that directory directly instead of
+the repo root. No other configuration is required; just import the repo into
+a Vercel project and deploy.
+
+To pick up new synthetic data on a deploy, run `python3 generate_data.py`
+locally, commit the updated `web/data/reconciliation.json`, and push.
+
 ## Resetting between sessions
 
 The "Approve" and "Send to review" actions on the Close view are in-memory
