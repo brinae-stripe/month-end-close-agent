@@ -125,6 +125,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderClose();
   renderAsk();
   renderMargin();
+  renderResidents();
 
   AppState.onChange(() => {
     renderClose();

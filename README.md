@@ -13,9 +13,17 @@ unmistakable.
 
 ## What it is
 
-- Three views: **Close** (month-end reconciliation board), **Ask** (a
-  scripted, non-generative Q&A panel), and **Margin** (absorbed card-fee
-  cost made visible).
+- Four views: **Close** (month-end reconciliation board), **Ask** (a
+  scripted, non-generative Q&A panel), **Margin** (absorbed card-fee
+  cost made visible), and **Residents** (tenant/lease-level payment
+  behavior, sourced only from fields documented at
+  [docs.stripe.com/data/schema](https://docs.stripe.com/data/schema):
+  on-time/late/NSF rent payment rates, lease renewal and rent-increase
+  rates, security deposit held/refunded/withheld totals, and rent-charge
+  dispute rate, on a weighted sample of 480 synthetic leases. Its
+  "Resident Risk Signals" panel is a deterministic point-scoring pass over
+  that same payment history, run in the browser — like Ask, it is
+  explicitly not a language model and makes no network call.
 - Modeled on **81 connected accounts**: 64 active entities in scope for
   the current month's reconciliation (~$92M of rent volume across
   ~47,000 homes and ~44,000 charges) plus 17 dormant entities carried for
@@ -102,6 +110,7 @@ web/
   close.js             Close view
   ask.js                Ask view (scripted Q&A)
   margin.js             Margin view
+  residents.js          Residents view (tenant/lease stats + risk-scoring pass)
   svg-charts.js         inline-SVG line chart helper (no charting library)
   data/reconciliation.json   generated output (not hand-edited)
 run.sh                 regenerate data + launch

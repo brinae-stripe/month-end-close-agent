@@ -830,6 +830,112 @@ margin_ceiling = {
 }
 
 # ---------------------------------------------------------------------------
+# Step 11.5 - resident/lease-level detail, for the Residents view
+# ---------------------------------------------------------------------------
+# Every field here maps to a real, documented Stripe/Sigma table
+# (https://docs.stripe.com/data/schema), illustrated on a fixed-size sample
+# rather than the full ~47,000-home portfolio:
+#   lease            -> subscriptions (id, customer_id, status, created)
+#   resident         -> customers (id)
+#   rent payment     -> invoices (due_date, period_start/end) + charges
+#                       (id, created, status, payment_method_type)
+#   late/on-time     -> charges.created vs. invoices.due_date
+#   NSF/failed rent  -> charges.status='failed' / refunds.reason='ach_return_nsf'
+#                       (same return type already modeled in Step 6 above)
+#   security deposit -> invoice_items (a one-time, non-subscription item)
+#   deposit refund   -> refunds (at move-out)
+#   lease renewal /
+#   rent increase    -> subscription_item_change_events (event_type
+#                       'ACTIVE_UPGRADE', mrr_change)
+#   rent disputed    -> disputes (charge_id, amount, reason)
+
+NUM_RESIDENTS_SAMPLE = 480
+HISTORY_MONTHS = 6
+
+resident_entity_weights = [(e, e["home_count"]) for e in active_entities]
+_weight_total = sum(w for _, w in resident_entity_weights)
+
+
+def pick_weighted_entity():
+    x = rng.uniform(0, _weight_total)
+    acc = 0
+    for e, w in resident_entity_weights:
+        acc += w
+        if x <= acc:
+            return e
+    return resident_entity_weights[-1][0]
+
+
+def build_payment_history(method, tenure_months):
+    months = min(HISTORY_MONTHS, max(1, tenure_months))
+    late_prob = 0.16 * (0.85 if method == "card" else 1.0 if method == "wallet" else 1.05)
+    failed_prob = 0.035 * (1.4 if method == "ach" else 0.6)
+    history = []
+    for k in range(months - 1, -1, -1):
+        m = MODEL_MONTH - k
+        y = MODEL_YEAR
+        while m <= 0:
+            m += 12
+            y -= 1
+        month_label = f"{y}-{m:02d}"
+        x = rng.random()
+        if x < failed_prob:
+            status, days_late = "failed", None
+        elif x < failed_prob + late_prob:
+            status, days_late = "late", rng.choice([rng.randint(1, 5), rng.randint(6, 20)])
+        else:
+            status, days_late = "on_time", 0
+        history.append({"month": month_label, "status": status, "days_late": days_late})
+    return history
+
+
+output_residents = []
+for i in range(NUM_RESIDENTS_SAMPLE):
+    entity = pick_weighted_entity()
+    method = pick_payment_method()
+    monthly_rent_cents = round(entity["avg_rent_cents"] * rng.uniform(0.85, 1.15))
+    tenure_months = rng.randint(1, 48)
+    history = build_payment_history(method, tenure_months)
+
+    vacated = tenure_months >= 6 and rng.random() < 0.08
+    renewed = (not vacated) and tenure_months >= 12 and rng.random() < 0.6
+    rent_increase_pct = None
+    if renewed:
+        rent_increase_pct = round(rng.uniform(0.02, 0.08), 4)
+
+    deposit_cents = round(monthly_rent_cents * rng.choice([1.0, 1.0, 1.0, 1.5]))
+    deposit_refunded_cents = None
+    if vacated:
+        deduction_frac = rng.uniform(0.0, 0.4)
+        deposit_refunded_cents = round(deposit_cents * (1 - deduction_frac))
+
+    disputed = rng.random() < 0.006
+
+    output_residents.append({
+        "resident_id": seq_id("res_sample", i + 1, width=4),
+        "lease_id": seq_id("lease_sample", i + 1, width=4),
+        "entity_id": entity["id"],
+        "entity_name": entity["name"],
+        "market": entity["market"],
+        "payment_method_type": method,
+        "monthly_rent_cents": monthly_rent_cents,
+        "tenure_months": tenure_months,
+        "lease_status": "vacated" if vacated else ("renewed" if renewed else "active"),
+        "rent_increase_pct": rent_increase_pct,
+        "security_deposit_cents": deposit_cents,
+        "security_deposit_refunded_cents": deposit_refunded_cents,
+        "disputed": disputed,
+        "payment_history": history,
+    })
+
+resident_sample_note = (
+    f"Resident/lease detail on the Residents view is illustrated on a sample of "
+    f"{NUM_RESIDENTS_SAMPLE} synthetic leases (of ~{ACTIVE_HOMES_TARGET:,} homes under "
+    f"management), weighted by entity size - figures there are proportionally "
+    f"representative, not full-portfolio counts."
+)
+
+# ---------------------------------------------------------------------------
 # Step 12 - assumptions panel (always visible on screen, per finance-audience review)
 # ---------------------------------------------------------------------------
 
@@ -841,6 +947,7 @@ ASSUMPTIONS = [
     "Digital wallet payments are priced identically to domestic card - assumption, not a Stripe-verified rate.",
     "The processing fee is modeled as netted from the investor's transfer, not absorbed by the operator - unconfirmed assumption.",
     "All entity names, resident IDs, property IDs, and dollar amounts are synthetic.",
+    resident_sample_note,
 ]
 
 # ---------------------------------------------------------------------------
@@ -910,6 +1017,8 @@ data = {
     "waiver_history": waiver_history,
     "collection_history": collection_history,
     "margin_ceiling": margin_ceiling,
+    "residents": output_residents,
+    "resident_sample_size": NUM_RESIDENTS_SAMPLE,
 }
 
 with open("web/data/reconciliation.json", "w") as f:
