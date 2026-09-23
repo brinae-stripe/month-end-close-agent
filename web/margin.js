@@ -158,7 +158,7 @@ function renderMargin() {
           <tbody>
             <tr><td>NSF returns after payout</td><td class="num">${nsfExcs.length}</td><td class="num">${Fmt.money(nsfTotal)}</td></tr>
             <tr><td>Duplicate payments</td><td class="num">${dupExcs.length}</td><td class="num">${Fmt.money(dupTotal)}</td></tr>
-            <tr><td>Application fee misroutes</td><td class="num">${appfeeExcs.length}</td><td class="num">${Fmt.money(appfeeTotal)}</td></tr>
+            <tr><td>Rental application fees misrouted to investors</td><td class="num">${appfeeExcs.length}</td><td class="num">${Fmt.money(appfeeTotal)}</td></tr>
           </tbody>
         </table>
       </div>

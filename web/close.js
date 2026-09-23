@@ -18,16 +18,19 @@ function exceptionMcpAction(exc) {
       return exc.unrecoverable_by_deadline
         ? {
             label: "Escalate for manual funding",
-            result: `Simulated: read the returned payout and its failure reason for ${exc.entity_name} out of Stripe and drafted a funding request for the operator's own treasury team. Reinitiating would not clear by the 10th, so this deliberately skips the retry path. Note that the Stripe call here is only the read &mdash; funding an investor off the payout path is a human decision.`,
+            result: `Simulated: read the returned payout and its failure reason for ${exc.entity_name} out of Stripe, then drafted both the manual funding request and the investor note the disposition calls for. The retry path is deliberately skipped because it cannot land by the 10th. Only the read is a Stripe call &mdash; funding an investor off the payout path is a human decision, and this stops at a draft.`,
           }
         : {
-            label: "Reinitiate payout",
-            result: `Simulated: re-created the returned payout for ${exc.entity_name} against verified bank details via the Stripe MCP server.`,
+            // Deliberately not "reinitiate": the details are stale, so there is
+            // nothing valid to reinitiate against yet. Requesting them is the
+            // only step actually available today.
+            label: "Request updated bank details",
+            result: `Simulated: sent ${exc.entity_name} a hosted account-update link via the Stripe MCP server. The payout gets reinitiated once they verify the new details, which still lands by the 10th as long as it goes out by ${Fmt.date(AppState.data.meta.initiate_cutoff)}.`,
           };
     case "nsf_after_payout":
       return {
-        label: "Retry debit + net",
-        result: `Simulated: re-presented the returned ACH debit via the Stripe MCP server and scheduled the unrecovered ${amount} to net against ${exc.entity_name}'s next payout, rather than a manual journal entry.`,
+        label: "Re-present debit, net the rest",
+        result: `Simulated: re-presented the returned ${amount} debit to the resident via the Stripe MCP server and scheduled anything not recovered to net against ${exc.entity_name}'s next payout, rather than clawing back a payout already made.`,
       };
     case "stale_mapping":
       return {
@@ -35,9 +38,13 @@ function exceptionMcpAction(exc) {
         result: `Simulated: repointed the property to ${exc.entity_name}'s connected account via the Stripe MCP server and transferred the misrouted ${amount} across from ${exc.counterparty_entity_name}. This also stops the exception recurring next month.`,
       };
     case "app_fee_misroute":
+      // The fee belongs to the property manager and landed on the investor's
+      // connected account, so the money moves off the entity, not onto it.
+      // "Reverse app fee" also read as a Stripe application_fee, which this is
+      // not - it is a rental application fee a prospective resident paid.
       return {
-        label: "Reverse app fee",
-        result: `Simulated: reversed the misrouted application fee via the Stripe MCP server, returning ${amount} to ${exc.entity_name}.`,
+        label: "Move fee to operating account",
+        result: `Simulated: reversed the destination transfer via the Stripe MCP server so the ${amount} rental application fee lands in the property manager's operating account instead of ${exc.entity_name}'s, clearing the ${amount} of over-funding.`,
       };
     case "short_payment":
       return {
@@ -101,7 +108,7 @@ function renderClose() {
 
     <div class="section-title">Exception queue</div>
     <div class="callout" style="margin-top:0; margin-bottom:16px;">
-      Each exception carries the specific fix for its type. Those are <strong>simulated</strong> Stripe calls &mdash; the kind the <strong>MCP server</strong> makes reachable to an agent &mdash; and they stay separate from Approve on purpose: carrying out the mechanical fix and signing off on the reconciliation are two different decisions.
+      Three buttons, two different decisions. The <strong>first</strong> carries out the proposed resolution's Stripe-side step &mdash; a <strong>simulated</strong> call of the kind the <strong>MCP server</strong> makes reachable to an agent. <strong>Accept &amp; reconcile</strong> is the sign-off: it accepts the resolution as the answer, drops the exception from this queue, and counts the entity as reconciled in the header. Doing the fix and signing off stay separate because an operator can reasonably do one without the other &mdash; execute the mechanical step and still want a second pair of eyes, or accept a disposition whose remaining work sits outside Stripe.
     </div>
     <div class="exception-queue" id="exception-queue">
       ${openExceptions.length ? openExceptions.map(exceptionCardHtml).join("") : `<div class="empty-queue">All exceptions cleared.</div>`}
@@ -156,12 +163,12 @@ function exceptionCardHtml(exc) {
           <span class="exception-impact ${impactClass}">${Fmt.money(exc.impact_cents)} ${impactLabel}</span>
         </div>
         <div class="exception-explain">${exc.explanation}</div>
-        <div class="exception-disposition">Proposed: ${exc.disposition}</div>
+        <div class="exception-disposition">Proposed resolution: ${exc.disposition}</div>
         <div class="exception-citations">Sources: ${exc.citations.join(", ")}</div>
       </div>
       <div class="exception-actions">
         ${mcp ? `<button class="agent-action-btn mcp-fix-btn" data-exc-id="${exc.id}">${mcp.label}</button>` : ""}
-        <button class="action-btn approve approve-btn" data-exc-id="${exc.id}">Approve</button>
+        <button class="action-btn approve approve-btn" data-exc-id="${exc.id}">Accept &amp; reconcile</button>
         <button class="action-btn review-btn" data-exc-id="${exc.id}">Send to review</button>
       </div>
     </div>

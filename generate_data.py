@@ -43,6 +43,16 @@ INITIATE_CUTOFF = date(2026, 10, 8)  # T+2 before the 10th - last day to kick of
 BANK_DETAIL_VERIFICATION_DAYS = 5   # realistic turnaround to confirm updated bank details
 UNRECOVERABLE_THRESHOLD_DAYS = BANK_DETAIL_VERIFICATION_DAYS
 
+
+def fmt_day(d):
+    """Readable date for prose baked into the JSON ("Oct 8, 2026").
+
+    Dispositions are read as sentences, so a bare ISO stamp mid-sentence
+    looks like a leaked field. Built by hand rather than with strftime %-d,
+    which is not portable.
+    """
+    return f"{d:%b} {d.day}, {d.year}"
+
 # Portfolio scale (validated production shape)
 NUM_ENTITIES_ACTIVE = 64     # connected accounts that transacted in the last 35 days
 NUM_ENTITIES_DORMANT = 17    # connected accounts with lifetime history, no current activity
@@ -550,7 +560,7 @@ for ent, count in zip(e_nsf, nsf_counts):
             "impact_cents": amount,
             "impact_direction": "over",
             "explanation": f"A resident's ACH rent payment of ${amount/100:,.2f} failed as an NSF return after {ent['name']} had already been paid out, leaving the entity over-funded.",
-            "disposition": f"Net the ${amount/100:,.2f} NSF return against {ent['name']}'s next scheduled payout rather than requesting funds back.",
+            "disposition": f"Re-present the returned ${amount/100:,.2f} debit to the resident, then net whatever is not recovered against {ent['name']}'s next scheduled payout rather than clawing the funds back.",
             "citations": [ch["id"], po["id"], re["id"]],
             "status": "open",
         })
@@ -613,7 +623,7 @@ for ent in e_short:
         "impact_cents": shortfall,
         "impact_direction": "under",
         "explanation": f"A resident paid ${paid/100:,.2f} against a ${full/100:,.2f} lease amount, leaving {ent['name']} short ${shortfall/100:,.2f} against the rent roll.",
-        "disposition": f"Flag the ${shortfall/100:,.2f} shortfall to the resident's ledger for collection next cycle; do not adjust {ent['name']}'s statement.",
+        "disposition": f"Invoice the ${shortfall/100:,.2f} shortfall to the resident for collection next cycle; do not adjust {ent['name']}'s statement.",
         "citations": [ch["id"]],
         "status": "open",
     })
@@ -668,10 +678,13 @@ exceptions.append({
     "explanation": f"{e_stale['name']}'s payout of ${stale_amount/100:,.2f} was returned due to stale bank account details on file, blocking funding for the entire entity.",
     "disposition": (
         f"Bank detail verification typically takes {BANK_DETAIL_VERIFICATION_DAYS} business days; with only "
-        f"{days_until_cutoff} day(s) left before the {INITIATE_CUTOFF.isoformat()} initiate cutoff, this entity is "
-        f"unlikely to clear by the 10th even if contacted today. Escalate immediately and set expectations with the investor."
+        f"{days_until_cutoff} {'day' if days_until_cutoff == 1 else 'days'} left before the {fmt_day(INITIATE_CUTOFF)} "
+        f"initiate cutoff, the payout rail can no longer land this by the 10th even if the details are corrected today. "
+        f"This is now a funding decision rather than a payments problem: escalate for manual funding from the operator's "
+        f"own cash to make the investor whole on time, and tell the investor either way."
         if unrecoverable else
-        f"Contact {e_stale['name']} today to confirm updated bank details and reinitiate the payout before {INITIATE_CUTOFF.isoformat()} to still land by the 10th."
+        f"Request updated bank details from {e_stale['name']} today, then reinitiate the payout once they verify. "
+        f"Initiating by {fmt_day(INITIATE_CUTOFF)} still lands the funds by the 10th."
     ),
     "citations": [po["id"]],
     "status": "open",

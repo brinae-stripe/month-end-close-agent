@@ -2467,7 +2467,7 @@
       "impact_cents": 169700,
       "impact_direction": "over",
       "explanation": "A resident's ACH rent payment of $1,697.00 failed as an NSF return after Tanglewood Asset Company 1 LLC had already been paid out, leaving the entity over-funded.",
-      "disposition": "Net the $1,697.00 NSF return against Tanglewood Asset Company 1 LLC's next scheduled payout rather than requesting funds back.",
+      "disposition": "Re-present the returned $1,697.00 debit to the resident, then net whatever is not recovered against Tanglewood Asset Company 1 LLC's next scheduled payout rather than clawing the funds back.",
       "citations": [
         "ch_DEMO_0531bc",
         "po_DEMO_85dba4",
@@ -2484,7 +2484,7 @@
       "impact_cents": 182000,
       "impact_direction": "over",
       "explanation": "A resident's ACH rent payment of $1,820.00 failed as an NSF return after Tanglewood Asset Company 1 LLC had already been paid out, leaving the entity over-funded.",
-      "disposition": "Net the $1,820.00 NSF return against Tanglewood Asset Company 1 LLC's next scheduled payout rather than requesting funds back.",
+      "disposition": "Re-present the returned $1,820.00 debit to the resident, then net whatever is not recovered against Tanglewood Asset Company 1 LLC's next scheduled payout rather than clawing the funds back.",
       "citations": [
         "ch_DEMO_843459",
         "po_DEMO_1c8b61",
@@ -2501,7 +2501,7 @@
       "impact_cents": 250100,
       "impact_direction": "over",
       "explanation": "A resident's ACH rent payment of $2,501.00 failed as an NSF return after Copper Bend Residential Assets 1, LLC had already been paid out, leaving the entity over-funded.",
-      "disposition": "Net the $2,501.00 NSF return against Copper Bend Residential Assets 1, LLC's next scheduled payout rather than requesting funds back.",
+      "disposition": "Re-present the returned $2,501.00 debit to the resident, then net whatever is not recovered against Copper Bend Residential Assets 1, LLC's next scheduled payout rather than clawing the funds back.",
       "citations": [
         "ch_DEMO_a29ca5",
         "po_DEMO_162859",
@@ -2518,7 +2518,7 @@
       "impact_cents": 163900,
       "impact_direction": "over",
       "explanation": "A resident's ACH rent payment of $1,639.00 failed as an NSF return after Cedar Row Assets 2, LLC had already been paid out, leaving the entity over-funded.",
-      "disposition": "Net the $1,639.00 NSF return against Cedar Row Assets 2, LLC's next scheduled payout rather than requesting funds back.",
+      "disposition": "Re-present the returned $1,639.00 debit to the resident, then net whatever is not recovered against Cedar Row Assets 2, LLC's next scheduled payout rather than clawing the funds back.",
       "citations": [
         "ch_DEMO_753ea9",
         "po_DEMO_334cfc",
@@ -2614,7 +2614,7 @@
       "impact_cents": 95061,
       "impact_direction": "under",
       "explanation": "A resident paid $1,366.39 against a $2,317.00 lease amount, leaving Cedar Row Assets 3, LLC short $950.61 against the rent roll.",
-      "disposition": "Flag the $950.61 shortfall to the resident's ledger for collection next cycle; do not adjust Cedar Row Assets 3, LLC's statement.",
+      "disposition": "Invoice the $950.61 shortfall to the resident for collection next cycle; do not adjust Cedar Row Assets 3, LLC's statement.",
       "citations": [
         "ch_DEMO_462001"
       ],
@@ -2629,7 +2629,7 @@
       "impact_cents": 97950,
       "impact_direction": "under",
       "explanation": "A resident paid $1,310.50 against a $2,290.00 lease amount, leaving Rivergate Asset Company 1 LLC short $979.50 against the rent roll.",
-      "disposition": "Flag the $979.50 shortfall to the resident's ledger for collection next cycle; do not adjust Rivergate Asset Company 1 LLC's statement.",
+      "disposition": "Invoice the $979.50 shortfall to the resident for collection next cycle; do not adjust Rivergate Asset Company 1 LLC's statement.",
       "citations": [
         "ch_DEMO_bd0e50"
       ],
@@ -2644,7 +2644,7 @@
       "impact_cents": 41462,
       "impact_direction": "under",
       "explanation": "A resident paid $1,405.38 against a $1,820.00 lease amount, leaving Silverline Development LLC short $414.62 against the rent roll.",
-      "disposition": "Flag the $414.62 shortfall to the resident's ledger for collection next cycle; do not adjust Silverline Development LLC's statement.",
+      "disposition": "Invoice the $414.62 shortfall to the resident for collection next cycle; do not adjust Silverline Development LLC's statement.",
       "citations": [
         "ch_DEMO_16b15e"
       ],
@@ -2659,7 +2659,7 @@
       "impact_cents": 55448,
       "impact_direction": "under",
       "explanation": "A resident paid $1,586.52 against a $2,141.00 lease amount, leaving Quarrytown SFR Asset Company 1 LLC short $554.48 against the rent roll.",
-      "disposition": "Flag the $554.48 shortfall to the resident's ledger for collection next cycle; do not adjust Quarrytown SFR Asset Company 1 LLC's statement.",
+      "disposition": "Invoice the $554.48 shortfall to the resident for collection next cycle; do not adjust Quarrytown SFR Asset Company 1 LLC's statement.",
       "citations": [
         "ch_DEMO_14b841"
       ],
@@ -2674,7 +2674,7 @@
       "impact_cents": 95302,
       "impact_direction": "under",
       "explanation": "A resident paid $1,175.98 against a $2,129.00 lease amount, leaving Ashford Assets 3, LLC short $953.02 against the rent roll.",
-      "disposition": "Flag the $953.02 shortfall to the resident's ledger for collection next cycle; do not adjust Ashford Assets 3, LLC's statement.",
+      "disposition": "Invoice the $953.02 shortfall to the resident for collection next cycle; do not adjust Ashford Assets 3, LLC's statement.",
       "citations": [
         "ch_DEMO_4bd483"
       ],
@@ -2689,7 +2689,7 @@
       "impact_cents": 32973,
       "impact_direction": "under",
       "explanation": "A resident paid $1,855.27 against a $2,185.00 lease amount, leaving Fallow Field Assets 1, LLC short $329.73 against the rent roll.",
-      "disposition": "Flag the $329.73 shortfall to the resident's ledger for collection next cycle; do not adjust Fallow Field Assets 1, LLC's statement.",
+      "disposition": "Invoice the $329.73 shortfall to the resident for collection next cycle; do not adjust Fallow Field Assets 1, LLC's statement.",
       "citations": [
         "ch_DEMO_810f2f"
       ],
@@ -2704,7 +2704,7 @@
       "impact_cents": 80164,
       "impact_direction": "under",
       "explanation": "A resident paid $1,188.36 against a $1,990.00 lease amount, leaving Rivergate Asset Company 2 LLC short $801.64 against the rent roll.",
-      "disposition": "Flag the $801.64 shortfall to the resident's ledger for collection next cycle; do not adjust Rivergate Asset Company 2 LLC's statement.",
+      "disposition": "Invoice the $801.64 shortfall to the resident for collection next cycle; do not adjust Rivergate Asset Company 2 LLC's statement.",
       "citations": [
         "ch_DEMO_4cb5ff"
       ],
@@ -2752,7 +2752,7 @@
       "impact_direction": "blocked",
       "unrecoverable_by_deadline": true,
       "explanation": "Copper Bend Residential Assets 2, LLC's payout of $2,581,113.00 was returned due to stale bank account details on file, blocking funding for the entire entity.",
-      "disposition": "Bank detail verification typically takes 5 business days; with only 4 day(s) left before the 2026-10-08 initiate cutoff, this entity is unlikely to clear by the 10th even if contacted today. Escalate immediately and set expectations with the investor.",
+      "disposition": "Bank detail verification typically takes 5 business days; with only 4 days left before the Oct 8, 2026 initiate cutoff, the payout rail can no longer land this by the 10th even if the details are corrected today. This is now a funding decision rather than a payments problem: escalate for manual funding from the operator's own cash to make the investor whole on time, and tell the investor either way.",
       "citations": [
         "po_DEMO_5c272f"
       ],

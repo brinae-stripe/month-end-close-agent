@@ -132,11 +132,11 @@ function buildRecommendations() {
     recs.push({
       urgency: "medium",
       impact: sumImpact(appfee),
-      title: `Reverse ${Fmt.money(sumImpact(appfee))} of misrouted application fees`,
-      why: `The platform fee was taken on ${appfee.length === 1 ? "a charge" : "charges"} where it should not have been, so the platform is holding revenue that belongs to the ${appfee.length === 1 ? "entity" : "entities"}.`,
+      title: `Recover ${Fmt.money(sumImpact(appfee))} of rental application fees that landed on investor accounts`,
+      why: `${appfee.length === 1 ? "A rental application fee" : `${appfee.length} rental application fees`} paid by prospective residents ${appfee.length === 1 ? "was" : "were"} routed to an investor's connected account instead of the property manager's own operating account. That is the manager's revenue sitting on someone else's books, and it shows up as ${appfee.length === 1 ? "that entity" : "those entities"} being over-funded. Note this is a rental application fee, not a Stripe application fee.`,
       action: {
-        label: "Reverse application fees",
-        result: `Simulated: reversed the misrouted application fees via the Stripe MCP server, returning ${Fmt.money(sumImpact(appfee))} to the affected ${appfee.length === 1 ? "entity" : "entities"}.`,
+        label: "Move fees to operating account",
+        result: `Simulated: reversed the destination transfers via the Stripe MCP server so the ${Fmt.money(sumImpact(appfee))} lands in the property manager's operating account, clearing the same amount of over-funding on ${appfee.map((e) => e.entity_name).join(", ")}.`,
       },
     });
   }
